@@ -33,6 +33,7 @@ namespace Buildalyzer.Tests.Integration
             @"LegacyFrameworkProjectWithReference\LegacyFrameworkProjectWithReference.csproj",
             @"LegacyFrameworkProjectWithPackageReference\LegacyFrameworkProjectWithPackageReference.csproj",
             @"SdkFrameworkProject\SdkFrameworkProject.csproj",
+            @"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj",
 #endif
             @"SdkNetCoreProject\SdkNetCoreProject.csproj",
             @"SdkNetCoreProjectImport\SdkNetCoreProjectImport.csproj",
@@ -40,8 +41,7 @@ namespace Buildalyzer.Tests.Integration
             @"SdkNetStandardProject\SdkNetStandardProject.csproj",
             @"SdkNetStandardProjectImport\SdkNetStandardProjectImport.csproj",
             @"SdkNetStandardProjectWithPackageReference\SdkNetStandardProjectWithPackageReference.csproj",
-            @"SdkProjectWithImportedProps\SdkProjectWithImportedProps.csproj",
-            @"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj"
+            @"SdkProjectWithImportedProps\SdkProjectWithImportedProps.csproj"
         };
 
         [Test]
@@ -111,12 +111,12 @@ namespace Buildalyzer.Tests.Integration
 
             // Then
             sourceFiles.ShouldNotBeNull(log.ToString());
-            sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()).ShouldBe(new[]
+            new[]
             {
                 "Class1",
                 "AssemblyAttributes",
                 "AssemblyInfo"
-            }, true, log.ToString());
+            }.ShouldBeSubsetOf(sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
         }
 
         [Test]
@@ -137,13 +137,53 @@ namespace Buildalyzer.Tests.Integration
 
             // Then
             references.ShouldNotBeNull(log.ToString());
-            references.ShouldContain(x => x.EndsWith("mscorlib.dll"), log.ToString());
+            references.ShouldContain(x => x.Contains("mscorlib"), log.ToString());
             if (projectFile.Contains("PackageReference"))
             {
                 references.ShouldContain(x => x.EndsWith("NodaTime.dll"), log.ToString());
             }
         }
 
+        [Test]
+        public void GetsSourceFilesFromBinaryLog(
+            [ValueSource(nameof(Preferences))] EnvironmentPreference preference,
+            [ValueSource(nameof(ProjectFiles))] string projectFile)
+        {
+            // Given
+            StringWriter log = new StringWriter();
+            ProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
+            EnvironmentOptions options = new EnvironmentOptions
+            {
+                Preference = preference
+            };
+            string binLogPath = Path.ChangeExtension(Path.GetTempFileName(), ".binlog");
+            analyzer.AddBinaryLogger(binLogPath);
+
+            try
+            {
+                // When
+                analyzer.Build(options);
+                IReadOnlyList<string> sourceFiles = analyzer.Manager.Analyze(binLogPath).First().SourceFiles;
+
+                // Then
+                sourceFiles.ShouldNotBeNull(log.ToString());
+                new[]
+                {
+                    "Class1",
+                    "AssemblyAttributes",
+                    "AssemblyInfo"
+                }.ShouldBeSubsetOf(sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
+            }
+            finally
+            {
+                if(File.Exists(binLogPath))
+                {
+                    File.Delete(binLogPath);
+                }
+            }
+        }
+
+#if Is_Windows
         [Test]
         public void MultiTargetingBuildAllTargetFrameworksGetsSourceFiles()
         {
@@ -157,18 +197,18 @@ namespace Buildalyzer.Tests.Integration
             // Then
             results.Count.ShouldBe(2);
             results.TargetFrameworks.ShouldBe(new[] { "net462", "netstandard2.0" }, true, log.ToString());
-            results["net462"].SourceFiles.Select(x => Path.GetFileName(x).Split('.').Reverse().Take(2).Reverse().First()).ShouldBe(new[]
+            new[]
             {
                 "Class1",
                 "AssemblyAttributes",
                 "AssemblyInfo"
-            }, true, log.ToString());
-            results["netstandard2.0"].SourceFiles.Select(x => Path.GetFileName(x).Split('.').Reverse().Take(2).Reverse().First()).ShouldBe(new[]
+            }.ShouldBeSubsetOf(results["net462"].SourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
+            new[]
             {
                 "Class2",
                 "AssemblyAttributes",
                 "AssemblyInfo"
-            }, true, log.ToString());
+            }.ShouldBeSubsetOf(results["netstandard2.0"].SourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
         }
 
         [Test]
@@ -183,13 +223,14 @@ namespace Buildalyzer.Tests.Integration
 
             // Then
             sourceFiles.ShouldNotBeNull(log.ToString());
-            sourceFiles.Select(x => Path.GetFileName(x).Split('.').Reverse().Take(2).Reverse().First()).ShouldBe(new[]
+            new[]
             {
                 "Class1",
                 "AssemblyAttributes",
                 "AssemblyInfo"
-            }, true, log.ToString());
+            }.ShouldBeSubsetOf(sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
         }
+#endif
 
         [Test]
         public void MultiTargetingBuildCoreTargetFrameworkGetsSourceFiles()
@@ -203,12 +244,12 @@ namespace Buildalyzer.Tests.Integration
 
             // Then
             sourceFiles.ShouldNotBeNull(log.ToString());
-            sourceFiles.Select(x => Path.GetFileName(x).Split('.').Reverse().Take(2).Reverse().First()).ShouldBe(new[]
+            new[]
             {
                 "Class2",
                 "AssemblyAttributes",
                 "AssemblyInfo"
-            }, true, log.ToString());
+            }.ShouldBeSubsetOf(sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
         }
 
         [Test]
@@ -342,7 +383,12 @@ namespace Buildalyzer.Tests.Integration
             AnalyzerResults results = analyzer.Build(options);
 
             // Then
+            // The generated GUIDs are based on subpath, so they'll be different from Windows to Linux
+#if Is_Windows
             results.First().ProjectGuid.ToString().ShouldBe("646a532e-8943-5a4b-b106-e1341b4d3535");
+#else
+            results.First().ProjectGuid.ToString().ShouldBe("c9df4376-d954-5554-bd10-b9976b7afa9d");
+#endif
         }
 
         [Test]
@@ -392,7 +438,12 @@ namespace Buildalyzer.Tests.Integration
             string path = Path.GetFullPath(
                 Path.Combine(
                     Path.GetDirectoryName(typeof(SimpleProjectsFixture).Assembly.Location),
-                    @"..\..\..\..\projects\" + file));
+                    "..",
+                    "..",
+                    "..",
+                    "..",
+                    "projects",
+                    file));
 
             return path.Replace('\\', Path.DirectorySeparatorChar);
         }

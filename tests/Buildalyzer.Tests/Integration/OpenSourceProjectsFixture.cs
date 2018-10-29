@@ -21,7 +21,7 @@ namespace Buildalyzer.Tests.Integration
         private const LoggerVerbosity Verbosity = LoggerVerbosity.Normal;
         private const bool BinaryLog = false;
 
-        private static EnvironmentPreference[] Preferences =
+        private static readonly EnvironmentPreference[] Preferences =
         {
 #if Is_Windows
             EnvironmentPreference.Framework,
@@ -31,14 +31,15 @@ namespace Buildalyzer.Tests.Integration
 
         private static TestRepository[] Repositories =
         {
-            new TestRepository("https://github.com/autofac/Autofac.git"),
+            new TestRepository("https://github.com/autofac/Autofac.git",
+                @"\bench\Autofac.Benchmarks\Autofac.Benchmarks.csproj"),
             new TestRepository("https://github.com/AutoMapper/AutoMapper.git"),
-            new TestRepository("https://github.com/JamesNK/Newtonsoft.Json.git"),  // Contains portable project, can't build using SDK
+            new TestRepository(EnvironmentPreference.Framework, "https://github.com/JamesNK/Newtonsoft.Json.git"),  // Contains portable project, can't build using SDK
             new TestRepository("https://github.com/nodatime/nodatime.git",
                 @"\src\NodaTime.Web.Blazor\NodaTime.Web.Blazor.csproj"),
             new TestRepository(EnvironmentPreference.Framework, "https://github.com/serilog/serilog.git"), // SourceLink messed up from AppVeyor on SDK: "SourceLink.Create.CommandLine.dll. Assembly with same name is already loaded Confirm that the <UsingTask> declaration is correct"
             new TestRepository("https://github.com/cake-build/cake"),
-            new TestRepository("https://github.com/Wyamio/Wyam.git"),
+            new TestRepository("https://github.com/Wyamio/Wyam.git")
         };
 
         public class TestRepository
@@ -58,7 +59,7 @@ namespace Buildalyzer.Tests.Integration
             {
                 Preference = preference;
                 Url = url;
-                Excluded = excluded ?? Array.Empty<string>();
+                Excluded = excluded?.Select(x => x.Replace('\\', Path.DirectorySeparatorChar)).ToArray() ?? Array.Empty<string>();
             }
 
             public override string ToString() => Url;
@@ -138,9 +139,7 @@ namespace Buildalyzer.Tests.Integration
             options.EnvironmentVariables.Add("ContinuousIntegrationBuild", null);
             options.EnvironmentVariables.Add("CI", "False");
             options.EnvironmentVariables.Add("CI_LINUX", "False");
-            options.EnvironmentVariables.Add("CI_WINDOWS", "False");
-
-            
+            options.EnvironmentVariables.Add("CI_WINDOWS", "False");            
 
             // When
             DeleteProjectDirectory(analyzer.ProjectFile.Path, "obj");
@@ -153,14 +152,19 @@ namespace Buildalyzer.Tests.Integration
                 analyzer.AddBinaryLogger($@"E:\Temp\{Path.GetFileNameWithoutExtension(solutionPath)}.{Path.GetFileNameWithoutExtension(analyzer.ProjectFile.Path)}.core.binlog");
             }
 #pragma warning restore 0162
-            
+
 #if Is_Windows
             AnalyzerResults results = analyzer.Build(options);
 #else
             // On non-Windows platforms we have to remove the .NET Framework target frameworks and only build .NET Core target frameworks
             // See https://github.com/dotnet/sdk/issues/826            
             string[] excludedTargetFrameworks = new[] { "net2", "net3", "net4", "portable" };
-            AnalyzerResults results = analyzer.Build(analyzer.ProjectFile.TargetFrameworks.Where(x => !excludedTargetFrameworks.Any(y => x.StartsWith(y))).ToArray(), options);
+            string[] targetFrameworks = analyzer.ProjectFile.TargetFrameworks.Where(x => !excludedTargetFrameworks.Any(y => x.StartsWith(y))).ToArray();
+            if(targetFrameworks.Length == 0)
+            {
+                Assert.Ignore();
+            }
+            AnalyzerResults results = analyzer.Build(targetFrameworks, options);
 #endif
 
             // Then
