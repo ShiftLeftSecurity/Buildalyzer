@@ -114,7 +114,7 @@ namespace Buildalyzer
 
         internal void ProcessCscCommandLine(string commandLine)
         {
-            if (string.IsNullOrWhiteSpace(commandLine))
+            if (string.IsNullOrWhiteSpace(commandLine) || _cscCommandLineArguments != null)
             {
                 return;
             }
