@@ -13,9 +13,6 @@ namespace Buildalyzer.Workspaces
 {
     public static class AnalyzerResultExtensions
     {
-        // Cache the project references for projects we've already seen to avoid rebuilding
-        private static ConcurrentDictionary<ProjectId, string[]> _projectReferences = new ConcurrentDictionary<ProjectId, string[]>();
-
         /// <summary>
         /// Gets a Roslyn workspace for the analyzed results.
         /// </summary>
@@ -61,17 +58,17 @@ namespace Buildalyzer.Workspaces
             ProjectId projectId = ProjectId.CreateFromSerialized(analyzerResult.ProjectGuid);
 
             // Cache the project references
-            _projectReferences.AddOrUpdate(projectId, _ => analyzerResult.ProjectReferences.ToArray(), (_, __) => analyzerResult.ProjectReferences.ToArray());
+            analyzerResult.Manager.WorkspaceProjectReferences[projectId.Id] = analyzerResult.ProjectReferences.ToArray();
 
             // Create and add the project
             ProjectInfo projectInfo = GetProjectInfo(analyzerResult, workspace, projectId);
             Solution solution = workspace.CurrentSolution.AddProject(projectInfo);
-
+            
             // Check if this project is referenced by any other projects in the workspace
             foreach (Project existingProject in solution.Projects.ToArray())
             {
                 if(!existingProject.Id.Equals(projectId)
-                    && _projectReferences.TryGetValue(existingProject.Id, out string[] existingReferences)
+                    && analyzerResult.Manager.WorkspaceProjectReferences.TryGetValue(existingProject.Id.Id, out string[] existingReferences)
                     && existingReferences.Contains(analyzerResult.ProjectFilePath))
                 {
                     // Add the reference to the existing project
@@ -118,8 +115,54 @@ namespace Buildalyzer.Workspaces
                 documents: GetDocuments(analyzerResult, projectId),
                 projectReferences: GetExistingProjectReferences(analyzerResult, workspace),
                 metadataReferences: GetMetadataReferences(analyzerResult),
+                parseOptions: CreateParseOptions(analyzerResult, languageName),
                 compilationOptions: CreateCompilationOptions(analyzerResult, languageName));
             return projectInfo;
+        }
+
+        private static ParseOptions CreateParseOptions(AnalyzerResult analyzerResult, string languageName)
+        {
+            if (languageName == LanguageNames.CSharp)
+            {
+                CSharpParseOptions parseOptions = new CSharpParseOptions();
+
+                // Add any constants
+                string constants = analyzerResult.GetProperty("DefineConstants");
+                if(!string.IsNullOrWhiteSpace(constants))
+                {
+                    parseOptions = parseOptions
+                        .WithPreprocessorSymbols(constants.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()));
+                }
+
+                // Get language version
+                string langVersion = analyzerResult.GetProperty("LangVersion");
+                Microsoft.CodeAnalysis.CSharp.LanguageVersion languageVersion;
+                if(!string.IsNullOrWhiteSpace(langVersion)
+                    && Microsoft.CodeAnalysis.CSharp.LanguageVersionFacts.TryParse(langVersion, out languageVersion))
+                {
+                    parseOptions = parseOptions.WithLanguageVersion(languageVersion);
+                }
+
+                return parseOptions;
+            }
+
+            if (languageName == LanguageNames.VisualBasic)
+            {
+                VisualBasicParseOptions parseOptions = new VisualBasicParseOptions();
+
+                // Get language version
+                string langVersion = analyzerResult.GetProperty("LangVersion");
+                Microsoft.CodeAnalysis.VisualBasic.LanguageVersion languageVersion = Microsoft.CodeAnalysis.VisualBasic.LanguageVersion.Default;
+                if (!string.IsNullOrWhiteSpace(langVersion)
+                    && Microsoft.CodeAnalysis.VisualBasic.LanguageVersionFacts.TryParse(langVersion, ref languageVersion))
+                {
+                    parseOptions = parseOptions.WithLanguageVersion(languageVersion);
+                }
+
+                return parseOptions;
+            }
+
+            return null;
         }
 
         private static CompilationOptions CreateCompilationOptions(AnalyzerResult analyzerResult, string languageName)
@@ -148,6 +191,7 @@ namespace Buildalyzer.Workspaces
                 {
                     return new CSharpCompilationOptions(kind.Value);
                 }
+
                 if (languageName == LanguageNames.VisualBasic)
                 {
                     return new VisualBasicCompilationOptions(kind.Value);

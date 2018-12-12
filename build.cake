@@ -8,12 +8,7 @@
 #addin nuget:?package=Cake.Wyam&version=1.5.1
 #addin "Octokit"
 #addin "NetlifySharp"
-#addin "Newtonsoft.Json"
-            
-// The built-in AppVeyor logger doesn't work yet,
-// but when it does we can remove the tool directive and TestAdapterPath property
-// https://github.com/appveyor/ci/issues/1601
-#tool "Appveyor.TestLogger&version=2.0.0"
+#tool "PipelinesTestLogger&version=0.1.0"
 
 using Octokit;
 using NetlifySharp;
@@ -39,8 +34,12 @@ var configuration = Argument("configuration", "Release");
 //////////////////////////////////////////////////////////////////////
 
 var isLocal = BuildSystem.IsLocalBuild;
-var isPullRequest = AppVeyor.Environment.PullRequest.IsPullRequest;
-var buildNumber = AppVeyor.Environment.Build.Number;
+var isRunningOnUnix = IsRunningOnUnix();
+var isRunningOnWindows = IsRunningOnWindows();
+var isRunningOnBuildServer = TFBuild.IsRunningOnVSTS;
+var isPullRequest = !string.IsNullOrWhiteSpace(EnvironmentVariable("SYSTEM_PULLREQUEST_PULLREQUESTID"));  // See https://github.com/cake-build/cake/issues/2149
+var buildNumber = TFBuild.Environment.Build.Number.Replace('.', '-');
+var branch = TFBuild.Environment.Repository.Branch;
 
 var releaseNotes = ParseReleaseNotes("./ReleaseNotes.md");
 
@@ -61,6 +60,9 @@ var docsDir = Directory("./docs");
 Setup(context =>
 {
     Information($"Building version {semVersion} of {projectName}.");
+    Information($"SYSTEM_TEAMFOUNDATIONCOLLECTIONURI: {EnvironmentVariable("SYSTEM_TEAMFOUNDATIONCOLLECTIONURI")}");
+    Information($"SYSTEM_TEAMPROJECT: {EnvironmentVariable("SYSTEM_TEAMPROJECT")}");
+    Information($"BUILD_BUILDID: {EnvironmentVariable("BUILD_BUILDID")}");
 });
 
 //////////////////////////////////////////////////////////////////////
@@ -111,13 +113,13 @@ Task("Test")
             NoRestore = true,
             Configuration = configuration
         };
-        if (AppVeyor.IsRunningOnAppVeyor)
+        if (isRunningOnBuildServer)
         {
             testSettings.Filter = "TestCategory!=ExcludeFromBuildServer";
-            testSettings.Logger = "Appveyor";
+            testSettings.Logger = "PipelinesTestLogger";
 
             // Remove this when no longer using the tool (see above)
-            testSettings.TestAdapterPath = GetDirectories($"./tools/Appveyor.TestLogger.*/build/_common").First();
+            testSettings.TestAdapterPath = GetDirectories($"./tools/PipelinesTestLogger.*/contentFiles/any/any").First();
         }
 
         Information($"Running tests in {project}");
@@ -164,7 +166,9 @@ Task("Zip")
 Task("MyGet")
     .Description("Pushes the packages to the MyGet feed.")
     .IsDependentOn("Pack")
+    .WithCriteria(() => !isLocal)
     .WithCriteria(() => !isPullRequest)
+    .WithCriteria(() => isRunningOnWindows)
     .Does(() =>
     {
         // Resolve the API key.
@@ -277,24 +281,13 @@ Task("Netlify")
         client.UpdateSite($"{siteName}.netlify.com", MakeAbsolute(docsDir).FullPath + "/output").SendAsync().Wait();
     });
 
-Task("AppVeyor")
+Task("BuildServer")
     .Description("Runs a build from the build server and updates build server data.")
     .IsDependentOn("Test")
     .IsDependentOn("Pack")
     .IsDependentOn("Zip")
     .IsDependentOn("MyGet")
-    .WithCriteria(() => AppVeyor.IsRunningOnAppVeyor)
-    .Does(() =>
-    {
-        AppVeyor.UpdateBuildVersion(semVersion);
-        
-        foreach(var file in GetFiles($"{ buildDir }/**/*"))
-        {
-            Information(file.FullPath);
-            AppVeyor.UploadArtifact(file);
-        }
-    });
-
+    .WithCriteria(() => isRunningOnBuildServer);
 
 //////////////////////////////////////////////////////////////////////
 // TASK TARGETS

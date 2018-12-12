@@ -23,11 +23,24 @@ namespace Buildalyzer.Environment
         private IDictionary<string, string> _additionalGlobalProperties;
         private IDictionary<string, string> _additionalEnvironmentVariables;
 
+        /// <summary>
+        /// Indicates that a design-time build should be performed.
+        /// </summary>
+        /// <remarks>
+        /// See https://github.com/dotnet/project-system/blob/master/docs/design-time-builds.md
+        /// </remarks>
         public bool DesignTime { get; }
+
+        /// <summary>
+        /// Runs the restore target prior to any other targets using the MSBuild <code>restore</code> switch.
+        /// </summary>
+        public bool Restore { get; }
 
         public string[] TargetsToBuild { get; }
 
         public string MsBuildExePath { get; }
+
+        public string DotnetExePath { get; }
 
         public IReadOnlyDictionary<string, string> GlobalProperties => _globalProperties;
 
@@ -35,12 +48,15 @@ namespace Buildalyzer.Environment
 
         public BuildEnvironment(
             bool designTime,
+            bool restore,
             string[] targetsToBuild,
             string msBuildExePath,
+            string dotnetExePath,
             IDictionary<string, string> additionalGlobalProperties = null,
             IDictionary<string, string> additionalEnvironmentVariables = null)
         {
             DesignTime = designTime;
+            Restore = restore;
             TargetsToBuild = targetsToBuild ?? throw new ArgumentNullException(nameof(targetsToBuild));
 
             // Check if we've already specified a path to MSBuild
@@ -51,6 +67,9 @@ namespace Buildalyzer.Environment
             {
                 throw new ArgumentNullException(nameof(msBuildExePath));
             }
+
+            // The dotnet path defaults to "dotnet" - if it's null then the user changed it and we should warn them
+            DotnetExePath = dotnetExePath ?? throw new ArgumentNullException(nameof(dotnetExePath));
 
             // Set global properties
             _globalProperties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -110,8 +129,10 @@ namespace Buildalyzer.Environment
         public BuildEnvironment WithTargetsToBuild(params string[] targets) =>
             new BuildEnvironment(
                 DesignTime,
+                Restore,
                 targets,
                 MsBuildExePath,
+                DotnetExePath,
                 _additionalGlobalProperties,
                 _additionalEnvironmentVariables);
     }

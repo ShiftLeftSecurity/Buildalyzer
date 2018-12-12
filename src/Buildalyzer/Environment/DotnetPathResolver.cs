@@ -18,27 +18,17 @@ namespace Buildalyzer.Environment
             _loggerFactory = loggerFactory;
             _logger = loggerFactory?.CreateLogger<DotnetPathResolver>();
         }
-
+        
         // Don't cache the result because it might change project to project due to global.json
-        public string ResolvePath(string projectPath)
+        public string ResolvePath(string projectPath, string dotnetExePath)
         {
-            List<string> output = GetInfo(projectPath);
-            if (output.Count == 0)
-            {
-                // Need to rety calling "dotnet --info" and do a hacky timeout for the process otherwise it occasionally locks up during testing (and possibly in the field)
-                int retry = 0;
-                do
-                {
-                    Thread.Sleep(500);
-                    output = GetInfo(projectPath);
-                    retry++;
-                } while (output.Count == 0 && retry < 5);
-            }
+            dotnetExePath = dotnetExePath ?? "dotnet";
+            List<string> output = GetInfo(projectPath, dotnetExePath);
 
             // Did we get any output?
             if (output == null || output.Count == 0)
             {
-                _logger?.LogWarning("Could not get results from `dotnet --info` call");
+                _logger?.LogWarning($"Could not get results from `{ dotnetExePath } --info` call");
                 return null;
             }
             
@@ -46,14 +36,14 @@ namespace Buildalyzer.Environment
             string basePath = ParseBasePath(output) ?? ParseInstalledSdksPath(output);
             if(string.IsNullOrWhiteSpace(basePath))
             {
-                _logger?.LogWarning("Could not locate SDK path in `dotnet --info` results");
+                _logger?.LogWarning($"Could not locate SDK path in `{ dotnetExePath } --info` results");
                 return null;
             }
 
             return basePath;
         }
 
-        private List<string> GetInfo(string projectPath)
+        private List<string> GetInfo(string projectPath, string dotnetExePath)
         {
             // Ensure that we set the DOTNET_CLI_UI_LANGUAGE environment variable to "en-US" before
             // running 'dotnet --info'. Otherwise, we may get localized results
@@ -66,13 +56,12 @@ namespace Buildalyzer.Environment
             };
 
             // global.json may change the version, so need to set working directory
-            List<string> output = new List<string>();
-            using (ProcessRunner processRunner = new ProcessRunner("dotnet", "--info", Path.GetDirectoryName(projectPath), environmentVariables, _loggerFactory, output))
+            using (ProcessRunner processRunner = new ProcessRunner(dotnetExePath, "--info", Path.GetDirectoryName(projectPath), environmentVariables, _loggerFactory))
             {
                 processRunner.Start();
-                processRunner.Process.WaitForExit(4000);
+                processRunner.WaitForExit(4000);
+                return processRunner.Output;
             }
-            return output;
         }
 
         // Try to find a base path
