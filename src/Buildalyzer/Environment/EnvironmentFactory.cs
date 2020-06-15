@@ -2,20 +2,22 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Xml.Linq;
 using Buildalyzer.Construction;
 using Microsoft.Build.Utilities;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Buildalyzer.Environment
 {
     public class EnvironmentFactory
     {
-        private readonly AnalyzerManager _manager;
-        private readonly ProjectFile _projectFile;
+        private readonly IAnalyzerManager _manager;
+        private readonly IProjectFile _projectFile;
         private readonly ILogger<EnvironmentFactory> _logger;
 
-        internal EnvironmentFactory(AnalyzerManager manager, ProjectFile projectFile)
+        internal EnvironmentFactory(IAnalyzerManager manager, IProjectFile projectFile)
         {
             _manager = manager;
             _projectFile = projectFile;
@@ -85,7 +87,7 @@ namespace Buildalyzer.Environment
             // Clone the options global properties dictionary so we can add to it
             Dictionary<string, string> additionalEnvironmentVariables = new Dictionary<string, string>(options.EnvironmentVariables);
 
-            // (Re)set the enviornment variables that dotnet sets
+            // (Re)set the environment variables that dotnet sets
             // See https://github.com/dotnet/cli/blob/0a4ad813ff971f549d34ac4ebc6c8cca9a741c36/src/Microsoft.DotNet.Cli.Utils/MSBuildForwardingAppWithoutLogging.cs#L22-L28
             // Especially important if a global.json is used because dotnet may set these to the latest, but then we'll call a msbuild.dll for the global.json version
             if (!additionalEnvironmentVariables.ContainsKey(EnvironmentVariables.MSBuildExtensionsPath))
@@ -96,6 +98,16 @@ namespace Buildalyzer.Environment
             {
                 additionalEnvironmentVariables.Add(EnvironmentVariables.MSBuildSDKsPath, Path.Combine(dotnetPath, "Sdks"));
             }
+            if (!additionalEnvironmentVariables.ContainsKey(EnvironmentVariables.COREHOST_TRACE))
+            {
+                additionalEnvironmentVariables.Add(EnvironmentVariables.COREHOST_TRACE, "0");
+            }
+            if (!additionalEnvironmentVariables.ContainsKey(EnvironmentVariables.DOTNET_HOST_PATH))
+            {
+                additionalEnvironmentVariables.Add(
+                    EnvironmentVariables.DOTNET_HOST_PATH,
+                    Path.GetFullPath(Path.Combine(dotnetPath, "..", "..", RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "dotnet.exe" : "dotnet")));
+            }
 
             return new BuildEnvironment(
                 options.DesignTime,
@@ -103,6 +115,7 @@ namespace Buildalyzer.Environment
                 options.TargetsToBuild.ToArray(),
                 msBuildExePath,
                 options.DotnetExePath,
+                options.Arguments,
                 additionalGlobalProperties,
                 additionalEnvironmentVariables);
         }
@@ -139,6 +152,7 @@ namespace Buildalyzer.Environment
                 options.TargetsToBuild.ToArray(),
                 msBuildExePath,
                 options.DotnetExePath,
+                options.Arguments,
                 additionalGlobalProperties,
                 options.EnvironmentVariables);
         }
@@ -151,20 +165,17 @@ namespace Buildalyzer.Environment
                 // Could not find the tools path, possibly due to https://github.com/Microsoft/msbuild/issues/2369
                 // Try to poll for it. From https://github.com/KirillOsenkov/MSBuildStructuredLog/blob/4649f55f900a324421bad5a714a2584926a02138/src/StructuredLogViewer/MSBuildLocator.cs
                 string programFilesX86 = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFilesX86);
-                msBuildExePath = new[]
+                DirectoryInfo vsDirectory = new DirectoryInfo(Path.Combine(programFilesX86, "Microsoft Visual Studio"));
+                if (vsDirectory.Exists)
                 {
-                    Path.Combine(programFilesX86, "Microsoft Visual Studio", "2017", "Enterprise", "MSBuild", "15.0", "Bin", "MSBuild.exe"),
-                    Path.Combine(programFilesX86, "Microsoft Visual Studio", "2017", "Professional", "MSBuild", "15.0", "Bin", "MSBuild.exe"),
-                    Path.Combine(programFilesX86, "Microsoft Visual Studio", "2017", "Community", "MSBuild", "15.0", "Bin", "MSBuild.exe")
+                    msBuildExePath = vsDirectory
+                        .GetDirectories("MSBuild", SearchOption.AllDirectories)
+                        .SelectMany(msBuildDir => msBuildDir.GetFiles("MSBuild.exe", SearchOption.AllDirectories))
+                        .OrderByDescending(msBuild => msBuild.LastWriteTimeUtc)
+                        .FirstOrDefault()?.FullName;
                 }
-                .Where(File.Exists)
-                .FirstOrDefault();
             }
-            if (string.IsNullOrEmpty(msBuildExePath))
-            {
-                return false;
-            }
-            return true;
+            return !string.IsNullOrEmpty(msBuildExePath);
         }
 
         private bool OnlyTargetsFramework(string targetFramework) =>

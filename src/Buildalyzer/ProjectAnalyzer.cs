@@ -16,7 +16,7 @@ using ILogger = Microsoft.Build.Framework.ILogger;
 
 namespace Buildalyzer
 {
-    public class ProjectAnalyzer
+    public class ProjectAnalyzer : IProjectAnalyzer
     {
         private readonly List<ILogger> _buildLoggers = new List<ILogger>();
 
@@ -26,7 +26,7 @@ namespace Buildalyzer
 
         public AnalyzerManager Manager { get; }
 
-        public ProjectFile ProjectFile { get; }
+        public IProjectFile ProjectFile { get; }
 
         public EnvironmentFactory EnvironmentFactory { get; }
 
@@ -71,7 +71,7 @@ namespace Buildalyzer
         {
             Manager = manager;
             Logger = Manager.LoggerFactory?.CreateLogger<ProjectAnalyzer>();
-            ProjectFile = new ProjectFile(projectFilePath, manager.ProjectTransformer);
+            ProjectFile = new ProjectFile(projectFilePath);
             EnvironmentFactory = new EnvironmentFactory(Manager, ProjectFile);
             ProjectInSolution = projectInSolution;
             SolutionDirectory = string.IsNullOrEmpty(manager.SolutionFilePath)
@@ -91,7 +91,7 @@ namespace Buildalyzer
         /// </summary>
         /// <param name="targetFrameworks">The set of target frameworks to build.</param>
         /// <returns>A dictionary of target frameworks to <see cref="AnalyzerResult"/>.</returns>
-        public AnalyzerResults Build(string[] targetFrameworks) =>
+        public IAnalyzerResults Build(string[] targetFrameworks) =>
             Build(targetFrameworks, new EnvironmentOptions());
 
         /// <summary>
@@ -100,7 +100,7 @@ namespace Buildalyzer
         /// <param name="targetFrameworks">The set of target frameworks to build.</param>
         /// <param name="environmentOptions">The environment options to use for the build.</param>
         /// <returns>A dictionary of target frameworks to <see cref="AnalyzerResult"/>.</returns>
-        public AnalyzerResults Build(string[] targetFrameworks, EnvironmentOptions environmentOptions)
+        public IAnalyzerResults Build(string[] targetFrameworks, EnvironmentOptions environmentOptions)
         {
             if (environmentOptions == null)
             {
@@ -113,7 +113,7 @@ namespace Buildalyzer
                 targetFrameworks = new string[] { null };
             }
 
-            // Create a new build envionment for each target
+            // Create a new build environment for each target
             AnalyzerResults results = new AnalyzerResults();
             foreach (string targetFramework in targetFrameworks)
             {
@@ -130,7 +130,7 @@ namespace Buildalyzer
         /// <param name="targetFrameworks">The set of target frameworks to build.</param>
         /// <param name="buildEnvironment">The build environment to use for the build.</param>
         /// <returns>A dictionary of target frameworks to <see cref="AnalyzerResult"/>.</returns>
-        public AnalyzerResults Build(string[] targetFrameworks, BuildEnvironment buildEnvironment)
+        public IAnalyzerResults Build(string[] targetFrameworks, BuildEnvironment buildEnvironment)
         {
             if (buildEnvironment == null)
             {
@@ -157,7 +157,7 @@ namespace Buildalyzer
         /// </summary>
         /// <param name="targetFramework">The target framework to build.</param>
         /// <returns>The result of the build process.</returns>
-        public AnalyzerResults Build(string targetFramework) =>
+        public IAnalyzerResults Build(string targetFramework) =>
             Build(targetFramework, EnvironmentFactory.GetBuildEnvironment(targetFramework));
 
         /// <summary>
@@ -166,7 +166,7 @@ namespace Buildalyzer
         /// <param name="targetFramework">The target framework to build.</param>
         /// <param name="environmentOptions">The environment options to use for the build.</param>
         /// <returns>The result of the build process.</returns>
-        public AnalyzerResults Build(string targetFramework, EnvironmentOptions environmentOptions) =>
+        public IAnalyzerResults Build(string targetFramework, EnvironmentOptions environmentOptions) =>
             Build(
                 targetFramework,
                 EnvironmentFactory.GetBuildEnvironment(
@@ -179,7 +179,7 @@ namespace Buildalyzer
         /// <param name="targetFramework">The target framework to build.</param>
         /// <param name="buildEnvironment">The build environment to use for the build.</param>
         /// <returns>The result of the build process.</returns>
-        public AnalyzerResults Build(string targetFramework, BuildEnvironment buildEnvironment) =>
+        public IAnalyzerResults Build(string targetFramework, BuildEnvironment buildEnvironment) =>
             BuildTargets(
                 buildEnvironment ?? throw new ArgumentNullException(nameof(buildEnvironment)),
                 targetFramework,
@@ -190,24 +190,24 @@ namespace Buildalyzer
         /// Builds the project without specifying a target framework. In a multi-targeted project this will return a <see cref="AnalyzerResult"/> for each target framework.
         /// </summary>
         /// <returns>The result of the build process.</returns>
-        public AnalyzerResults Build() => Build((string)null);
+        public IAnalyzerResults Build() => Build((string)null);
 
         /// <summary>
         /// Builds the project without specifying a target framework. In a multi-targeted project this will return a <see cref="AnalyzerResult"/> for each target framework.
         /// </summary>
         /// <param name="environmentOptions">The environment options to use for the build.</param>
         /// <returns>The result of the build process.</returns>
-        public AnalyzerResults Build(EnvironmentOptions environmentOptions) => Build((string)null, environmentOptions);
+        public IAnalyzerResults Build(EnvironmentOptions environmentOptions) => Build((string)null, environmentOptions);
 
         /// <summary>
         /// Builds the project without specifying a target framework. In a multi-targeted project this will return a <see cref="AnalyzerResult"/> for each target framework.
         /// </summary>
         /// <param name="buildEnvironment">The build environment to use for the build.</param>
         /// <returns>The result of the build process.</returns>
-        public AnalyzerResults Build(BuildEnvironment buildEnvironment) => Build((string)null, buildEnvironment);
+        public IAnalyzerResults Build(BuildEnvironment buildEnvironment) => Build((string)null, buildEnvironment);
 
         // This is where the magic happens - returns one result per result target framework
-        private AnalyzerResults BuildTargets(BuildEnvironment buildEnvironment, string targetFramework, string[] targetsToBuild, AnalyzerResults results)
+        private IAnalyzerResults BuildTargets(BuildEnvironment buildEnvironment, string targetFramework, string[] targetsToBuild, AnalyzerResults results)
         {
             using (CancellationTokenSource cancellation = new CancellationTokenSource())
             {
@@ -247,6 +247,11 @@ namespace Buildalyzer
                 initialArguments = $"\"{buildEnvironment.MsBuildExePath}\"";
             }
 
+            // Environment arguments
+            string environmentArguments = buildEnvironment.Arguments.Any()
+                ? string.Join(" ", buildEnvironment.Arguments)
+                : string.Empty;
+
             // Get the logger arguments (/l)
             string loggerPath = typeof(BuildalyzerLogger).Assembly.Location;
             bool logEverything = _buildLoggers.Count > 0;
@@ -259,6 +264,12 @@ namespace Buildalyzer
                 // Setting the TargetFramework MSBuild property tells MSBuild which target framework to use for the outer build
                 effectiveGlobalProperties[MsBuildProperties.TargetFramework] = targetFramework;
             }
+            if (Path.GetExtension(ProjectFile.Path).Equals(".fsproj", StringComparison.OrdinalIgnoreCase)
+                && effectiveGlobalProperties.ContainsKey(MsBuildProperties.SkipCompilerExecution))
+            {
+                // We can't skip the compiler for design-time builds in F# (it causes strange errors regarding file copying)
+                effectiveGlobalProperties.Remove(MsBuildProperties.SkipCompilerExecution);
+            }
             string propertyArgument = effectiveGlobalProperties.Count == 0 ? string.Empty : $"/property:{string.Join(";", effectiveGlobalProperties.Select(x => $"{x.Key}={FormatArgument(x.Value)}"))}";
 
             // Get the target argument (/target)
@@ -267,7 +278,7 @@ namespace Buildalyzer
             // Get the restore argument (/restore)
             string restoreArgument = buildEnvironment.Restore ? "/restore" : string.Empty;
 
-            arguments = $"{initialArguments} /noconsolelogger {restoreArgument} {targetArgument} {propertyArgument} {loggerArgument} {FormatArgument(ProjectFile.Path)}";
+            arguments = $"{initialArguments} /noconsolelogger {environmentArguments} {restoreArgument} {targetArgument} {propertyArgument} {loggerArgument} {FormatArgument(ProjectFile.Path)}";
             return fileName;
         }
 

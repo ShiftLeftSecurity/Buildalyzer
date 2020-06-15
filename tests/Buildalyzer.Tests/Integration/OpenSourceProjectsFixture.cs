@@ -34,7 +34,6 @@ namespace Buildalyzer.Tests.Integration
                 "https://github.com/autofac/Autofac.git",
                 @"\bench\Autofac.Benchmarks\Autofac.Benchmarks.csproj"),
             new TestRepository("https://github.com/AutoMapper/AutoMapper.git"),
-            new TestRepository(EnvironmentPreference.Framework, "https://github.com/JamesNK/Newtonsoft.Json.git"),  // Contains portable project, can't build using SDK
             new TestRepository(EnvironmentPreference.Framework, "https://github.com/serilog/serilog.git"), // SourceLink messed up from AppVeyor on SDK: "SourceLink.Create.CommandLine.dll. Assembly with same name is already loaded Confirm that the <UsingTask> declaration is correct"
             new TestRepository("https://github.com/cake-build/cake"),
             new TestRepository("https://github.com/Wyamio/Wyam.git")
@@ -125,13 +124,13 @@ namespace Buildalyzer.Tests.Integration
             {
                 LogWriter = log
             });
-            ProjectAnalyzer analyzer = manager.GetProject(projectPath);
+            IProjectAnalyzer analyzer = manager.GetProject(projectPath);
             EnvironmentOptions options = new EnvironmentOptions
             {
                 Preference = preference
             };
 
-            // Set some enviornment variables to make it seem like we're not in a CI build
+            // Set some environment variables to make it seem like we're not in a CI build
             // Sometimes this messes up libraries like SourceLink since we're building as part of a test and not for CI
             options.EnvironmentVariables.Add("APPVEYOR", "False");
             options.EnvironmentVariables.Add("ContinuousIntegrationBuild", null);
@@ -147,12 +146,12 @@ namespace Buildalyzer.Tests.Integration
 #pragma warning disable 0162
             if (BinaryLog)
             {
-                analyzer.AddBinaryLogger($@"E:\Temp\{Path.GetFileNameWithoutExtension(solutionPath)}.{Path.GetFileNameWithoutExtension(analyzer.ProjectFile.Path)}.core.binlog");
+                analyzer.AddBinaryLogger($@"C:\Temp\{Path.GetFileNameWithoutExtension(solutionPath)}.{Path.GetFileNameWithoutExtension(analyzer.ProjectFile.Path)}.core.binlog");
             }
 #pragma warning restore 0162
 
 #if Is_Windows
-            AnalyzerResults results = analyzer.Build(options);
+            IAnalyzerResults results = analyzer.Build(options);
 #else
             // On non-Windows platforms we have to remove the .NET Framework target frameworks and only build .NET Core target frameworks
             // See https://github.com/dotnet/sdk/issues/826
@@ -162,7 +161,7 @@ namespace Buildalyzer.Tests.Integration
             {
                 Assert.Ignore();
             }
-            AnalyzerResults results = analyzer.Build(targetFrameworks, options);
+            IAnalyzerResults results = analyzer.Build(targetFrameworks, options);
 #endif
 
             // Then

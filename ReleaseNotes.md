@@ -1,3 +1,39 @@
+# 3.0.0
+
+- Added support for specifying additional MSBuild arguments via `EnvironmentOptions.Arguments`.
+- Updated the MSBuild.StructuredLogger package to version 2.1.133
+- Updated MSBuild packages to 16.5.0 (#140, thanks @colombod)
+- Updated Microsoft.CodeAnalysis packages to 3.6.0
+- The result of these package updates is that while Buildalyzer itself targets .NET Standard 2.0, any consuming application will need to target either .NET Core 2.1 or .NET Framework 4.7.2 (or higher)
+
+# 2.6.0
+
+- [Refactoring] Refactored key classes into interfaces for easier testing (#132, thanks @richardwerkman)
+
+# 2.5.1
+
+- [Fix] Removed the explicit encoding parameter when generating a `SourceText` in Buildalyzer.Workspaces (#128)
+- [Fix] Fixes a race condition in `ProcessRunner` in `Process.WaitForExit()` calls (#125, thanks @duncanawoods)
+
+# 2.5.0
+
+- [Fix] Fix for finding the default SDK in some scenarios due to differences in output from dotnet (#120, thanks @patriksvensson)
+- [Refactoring] Updates `Microsoft.CodeAnalysis` dependencies in `Buildalyzer.Workspaces` (#124, thanks @farnyser)
+- [Feature] Support for F# projects (#123)
+
+# 2.4.0
+
+- [Fix] Removes `IProjectTransformer` since Buildalyzer no longer feeds project files to the MSBuild API (#114)
+- [Feature] Adds back project filtering (#118)
+- [Fix] Added "System.Reflection.TypeExtensions" as a direct dependency for .NET Framework consumers (#116)
+- [Fix] Disable the COREHOST_TRACE environment variable (#115, thanks @sapsari)
+
+# 2.3.0
+
+- [Feature] Package references are now available directly in `ProjectFile` (#111, thanks @eNeRGy164)
+- [Feature] Better future-proof MSBuild path discovery (#106, thanks @colombod)
+- [Fix] Fixes for csc arguments parser (#100, thanks azyobuzin)
+
 # 2.2.0
 
 - [Fix] Several fixes for parsing the `csc` command line arguments from the build log (#89)

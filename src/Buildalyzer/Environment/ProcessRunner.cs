@@ -12,8 +12,8 @@ namespace Buildalyzer.Environment
     {
         private readonly ILogger<ProcessRunner> _logger;
 
-        public List<string> Output { get; private set; }
-        public List<string> Error { get; private set; }
+        public List<string> Output { get; } = new List<string>();
+        public List<string> Error { get; } = new List<string>();
         public int ExitCode => Process.ExitCode;
 
         private Process Process { get; }
@@ -42,8 +42,6 @@ namespace Buildalyzer.Environment
                 }
             };
 
-            // Create the process info
-
             // Copy over environment variables
             if (environmentVariables != null)
             {
@@ -56,11 +54,30 @@ namespace Buildalyzer.Environment
 
             Process.EnableRaisingEvents = true;  // Raises Process.Exited immediately instead of when checked via .WaitForExit() or .HasExited
             Process.Exited += ProcessExited;
+
+            Process.OutputDataReceived += (_, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    Output.Add(e.Data);
+                    _logger?.LogDebug(e.Data + System.Environment.NewLine);
+                }
+            };
+            Process.ErrorDataReceived += (_, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    Error.Add(e.Data);
+                    _logger?.LogError(e.Data + System.Environment.NewLine);
+                }
+            };
         }
 
         public ProcessRunner Start()
         {
             Process.Start();
+            Process.BeginOutputReadLine();
+            Process.BeginErrorReadLine();
             _logger?.LogDebug($"{System.Environment.NewLine}Started process {Process.Id}: \"{Process.StartInfo.FileName}\" {Process.StartInfo.Arguments}{System.Environment.NewLine}");
             return this;
         }
@@ -71,23 +88,19 @@ namespace Buildalyzer.Environment
             _logger?.LogDebug($"Process {Process.Id} exited with code {Process.ExitCode}{System.Environment.NewLine}{System.Environment.NewLine}");
         }
 
-        public void WaitForExit()
-        {
-            Process.WaitForExit();
-            ProcessOutput();
-        }
+        public void WaitForExit() => Process.WaitForExit();
 
         public bool WaitForExit(int timeout)
         {
             bool exited = Process.WaitForExit(timeout);
-            ProcessOutput();
+            if (exited)
+            {
+                // To ensure that asynchronous event handling has been completed, call the WaitForExit() overload that takes no parameter after receiving a true from this overload.
+                // From https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.process.waitforexit?redirectedfrom=MSDN&view=netcore-3.1#System_Diagnostics_Process_WaitForExit_System_Int32_
+                // See also https://github.com/dotnet/runtime/issues/27128
+                Process.WaitForExit();
+            }
             return exited;
-        }
-
-        private void ProcessOutput()
-        {
-            Output = Process.StandardOutput.ReadToEnd().Split('\n').Select(l => l.Trim()).ToList();
-            Error = Process.StandardError.ReadToEnd().Split('\n').Select(l => l.Trim()).ToList();
         }
 
         public void Dispose()

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Xml.Linq;
@@ -35,6 +36,7 @@ namespace Buildalyzer.Tests.Integration
             @"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj",
 #endif
             @"SdkNetCoreProject\SdkNetCoreProject.csproj",
+            @"SdkNetCore31Project\SdkNetCore31Project.csproj",
             @"SdkNetCoreProjectImport\SdkNetCoreProjectImport.csproj",
             @"SdkNetCoreProjectWithReference\SdkNetCoreProjectWithReference.csproj",
             @"SdkNetCoreProjectWithImportedProps\SdkNetCoreProjectWithImportedProps.csproj",
@@ -51,7 +53,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
             EnvironmentOptions options = new EnvironmentOptions
             {
                 Preference = preference
@@ -60,7 +62,7 @@ namespace Buildalyzer.Tests.Integration
             // When
             DeleteProjectDirectory(projectFile, "obj");
             DeleteProjectDirectory(projectFile, "bin");
-            AnalyzerResults results = analyzer.Build(options);
+            IAnalyzerResults results = analyzer.Build(options);
 
             // Then
             results.Count.ShouldBeGreaterThan(0, log.ToString());
@@ -75,7 +77,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
             EnvironmentOptions options = new EnvironmentOptions
             {
                 Preference = preference,
@@ -85,7 +87,7 @@ namespace Buildalyzer.Tests.Integration
             // When
             DeleteProjectDirectory(projectFile, "obj");
             DeleteProjectDirectory(projectFile, "bin");
-            AnalyzerResults results = analyzer.Build(options);
+            IAnalyzerResults results = analyzer.Build(options);
 
             // Then
             results.Count.ShouldBeGreaterThan(0, log.ToString());
@@ -100,7 +102,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
             EnvironmentOptions options = new EnvironmentOptions
             {
                 Preference = preference
@@ -113,8 +115,11 @@ namespace Buildalyzer.Tests.Integration
             sourceFiles.ShouldNotBeNull(log.ToString());
             new[]
             {
-                "Class1",
+#if Is_Windows
+                // Linux and Mac builds appear to omit the AssemblyAttributes.cs file
                 "AssemblyAttributes",
+#endif
+                "Class1",
                 "AssemblyInfo"
             }.ShouldBeSubsetOf(sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
         }
@@ -126,7 +131,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
             EnvironmentOptions options = new EnvironmentOptions
             {
                 Preference = preference
@@ -151,7 +156,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
             EnvironmentOptions options = new EnvironmentOptions
             {
                 Preference = preference
@@ -169,9 +174,12 @@ namespace Buildalyzer.Tests.Integration
                 sourceFiles.ShouldNotBeNull(log.ToString());
                 new[]
                 {
-                    "Class1",
-                    "AssemblyAttributes",
-                    "AssemblyInfo"
+#if Is_Windows
+                // Linux and Mac builds appear to omit the AssemblyAttributes.cs file
+                "AssemblyAttributes",
+#endif
+                "Class1",
+                "AssemblyInfo"
                 }.ShouldBeSubsetOf(sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
             }
             finally
@@ -189,24 +197,30 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj", log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj", log);
 
             // When
-            AnalyzerResults results = analyzer.Build();
+            IAnalyzerResults results = analyzer.Build();
 
             // Then
             results.Count.ShouldBe(2);
             results.TargetFrameworks.ShouldBe(new[] { "net462", "netstandard2.0" }, true, log.ToString());
             new[]
             {
-                "Class1",
+#if Is_Windows
+                // Linux and Mac builds appear to omit the AssemblyAttributes.cs file
                 "AssemblyAttributes",
+#endif
+                "Class1",
                 "AssemblyInfo"
             }.ShouldBeSubsetOf(results["net462"].SourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
             new[]
             {
-                "Class2",
+#if Is_Windows
+                // Linux and Mac builds appear to omit the AssemblyAttributes.cs file
                 "AssemblyAttributes",
+#endif
+                "Class2",
                 "AssemblyInfo"
             }.ShouldBeSubsetOf(results["netstandard2.0"].SourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
         }
@@ -216,7 +230,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj", log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj", log);
 
             // When
             IReadOnlyList<string> sourceFiles = analyzer.Build("net462").First().SourceFiles;
@@ -225,8 +239,11 @@ namespace Buildalyzer.Tests.Integration
             sourceFiles.ShouldNotBeNull(log.ToString());
             new[]
             {
-                "Class1",
+#if Is_Windows
+                // Linux and Mac builds appear to omit the AssemblyAttributes.cs file
                 "AssemblyAttributes",
+#endif
+                "Class1",
                 "AssemblyInfo"
             }.ShouldBeSubsetOf(sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
         }
@@ -237,7 +254,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj", log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj", log);
 
             // When
             IReadOnlyList<string> sourceFiles = analyzer.Build("netstandard2.0").First().SourceFiles;
@@ -246,9 +263,12 @@ namespace Buildalyzer.Tests.Integration
             sourceFiles.ShouldNotBeNull(log.ToString());
             new[]
             {
-                "Class2",
+#if Is_Windows
+                // Linux and Mac builds appear to omit the AssemblyAttributes.cs file
                 "AssemblyAttributes",
-                "AssemblyInfo"
+                "AssemblyInfo",
+#endif
+                "Class2"
             }.ShouldBeSubsetOf(sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
         }
 
@@ -257,7 +277,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkNetStandardProjectWithPackageReference\SdkNetStandardProjectWithPackageReference.csproj", log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkNetStandardProjectWithPackageReference\SdkNetStandardProjectWithPackageReference.csproj", log);
 
             // When
             IReadOnlyList<string> references = analyzer.Build().First().References;
@@ -272,7 +292,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkNetStandardProjectWithPackageReference\SdkNetStandardProjectWithPackageReference.csproj", log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkNetStandardProjectWithPackageReference\SdkNetStandardProjectWithPackageReference.csproj", log);
 
             // When
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> packageReferences = analyzer.Build().First().PackageReferences;
@@ -287,7 +307,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkNetCoreProjectWithReference\SdkNetCoreProjectWithReference.csproj", log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkNetCoreProjectWithReference\SdkNetCoreProjectWithReference.csproj", log);
 
             // When
             IEnumerable<string> references = analyzer.Build().First().ProjectReferences;
@@ -304,7 +324,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(@"LegacyFrameworkProjectWithPackageReference\LegacyFrameworkProjectWithPackageReference.csproj", log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(@"LegacyFrameworkProjectWithPackageReference\LegacyFrameworkProjectWithPackageReference.csproj", log);
 
             // When
             IReadOnlyList<string> references = analyzer.Build().First().References;
@@ -319,7 +339,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(@"LegacyFrameworkProjectWithPackageReference\LegacyFrameworkProjectWithPackageReference.csproj", log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(@"LegacyFrameworkProjectWithPackageReference\LegacyFrameworkProjectWithPackageReference.csproj", log);
 
             // When
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> packageReferences = analyzer.Build().First().PackageReferences;
@@ -334,7 +354,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             StringWriter log = new StringWriter();
-            ProjectAnalyzer analyzer = GetProjectAnalyzer(@"LegacyFrameworkProjectWithReference\LegacyFrameworkProjectWithReference.csproj", log);
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(@"LegacyFrameworkProjectWithReference\LegacyFrameworkProjectWithReference.csproj", log);
 
             // When
             IEnumerable<string> references = analyzer.Build().First().ProjectReferences;
@@ -365,6 +385,25 @@ namespace Buildalyzer.Tests.Integration
         }
 
         [Test]
+        public void FiltersProjectsInSolution()
+        {
+            // Given
+            StringWriter log = new StringWriter();
+
+            // When
+            AnalyzerManager manager = new AnalyzerManager(
+                GetProjectPath("TestProjects.sln"),
+                new AnalyzerManagerOptions
+                {
+                    LogWriter = log,
+                    ProjectFilter = x => x.AbsolutePath.Contains("Core")
+                });
+
+            // Then
+            ProjectFiles.Select(x => GetProjectPath(x)).Where(x => x.Contains("Core")).ShouldBe(manager.Projects.Keys, true, log.ToString());
+        }
+
+        [Test]
         public void IgnoreSolutionItemsThatAreNotProjects()
         {
             // Given / When
@@ -380,7 +419,7 @@ namespace Buildalyzer.Tests.Integration
             // Given
             AnalyzerManager manager = new AnalyzerManager(
                 GetProjectPath("TestProjects.sln"));
-            ProjectAnalyzer analyzer = manager.Projects.First(x => x.Key.EndsWith("SdkNetStandardProject.csproj")).Value;
+            IProjectAnalyzer analyzer = manager.Projects.First(x => x.Key.EndsWith("SdkNetStandardProject.csproj")).Value;
             EnvironmentOptions options = new EnvironmentOptions
             {
                 Preference = preference
@@ -389,7 +428,7 @@ namespace Buildalyzer.Tests.Integration
             // When
             DeleteProjectDirectory(analyzer.ProjectFile.Path, "obj");
             DeleteProjectDirectory(analyzer.ProjectFile.Path, "bin");
-            AnalyzerResults results = analyzer.Build(options);
+            IAnalyzerResults results = analyzer.Build(options);
 
             // Then
             results.First().ProjectGuid.ToString().ShouldBe("016713d9-b665-4272-9980-148801a9b88f");
@@ -400,7 +439,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             const string projectFile = @"SdkNetCoreProject\SdkNetCoreProject.csproj";
-            ProjectAnalyzer analyzer = new AnalyzerManager()
+            IProjectAnalyzer analyzer = new AnalyzerManager()
                 .GetProject(GetProjectPath(projectFile));
             EnvironmentOptions options = new EnvironmentOptions
             {
@@ -410,7 +449,7 @@ namespace Buildalyzer.Tests.Integration
             // When
             DeleteProjectDirectory(projectFile, "obj");
             DeleteProjectDirectory(projectFile, "bin");
-            AnalyzerResults results = analyzer.Build(options);
+            IAnalyzerResults results = analyzer.Build(options);
 
             // Then
             // The generated GUIDs are based on subpath, so they'll be different from Windows to Linux
@@ -426,7 +465,7 @@ namespace Buildalyzer.Tests.Integration
         {
             // Given
             const string projectFile = @"SdkNetCoreProject\SdkNetCoreProject.csproj";
-            ProjectAnalyzer analyzer = new AnalyzerManager()
+            IProjectAnalyzer analyzer = new AnalyzerManager()
                 .GetProject(GetProjectPath(projectFile));
             EnvironmentOptions options = new EnvironmentOptions
             {
@@ -436,7 +475,7 @@ namespace Buildalyzer.Tests.Integration
             // When
             DeleteProjectDirectory(projectFile, "obj");
             DeleteProjectDirectory(projectFile, "bin");
-            AnalyzerResults results = analyzer.Build(options);
+            IAnalyzerResults results = analyzer.Build(options);
 
             // Then
             results.Count.ShouldBeGreaterThan(0);
@@ -444,9 +483,78 @@ namespace Buildalyzer.Tests.Integration
             results.ShouldAllBe(x => x.Succeeded);
         }
 
-        private static ProjectAnalyzer GetProjectAnalyzer(string projectFile, StringWriter log)
+        [Test]
+        public void BuildsFSharpProject()
         {
-            ProjectAnalyzer analyzer = new AnalyzerManager(
+            // Given
+            const string projectFile = @"FSharpProject\FSharpProject.fsproj";
+            StringWriter log = new StringWriter();
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(projectFile, log);
+
+            // When
+            DeleteProjectDirectory(projectFile, "obj");
+            DeleteProjectDirectory(projectFile, "bin");
+            IAnalyzerResults results = analyzer.Build();
+
+            // Then
+            results.Count.ShouldBeGreaterThan(0, log.ToString());
+            results.OverallSuccess.ShouldBeTrue(log.ToString());
+            results.ShouldAllBe(x => x.Succeeded, log.ToString());
+        }
+
+        [Test]
+        public void GetsSourceFilesFromVersion9BinLog()
+        {
+            // Given
+            StringWriter log = new StringWriter();
+            IProjectAnalyzer analyzer = GetProjectAnalyzer(
+                @"SdkNetCore31Project\SdkNetCore31Project.csproj",
+                log);
+            string binLogPath = Path.ChangeExtension(Path.GetTempFileName(), ".binlog");
+            EnvironmentOptions options = new EnvironmentOptions();
+            options.Arguments.Add("/bl:" + binLogPath); // Tell MSBuild to produce the binlog so we use the latest internal logger
+
+            try
+            {
+                // When
+                analyzer.Build(options);
+                using (Stream stream = File.OpenRead(binLogPath))
+                {
+                    using (GZipStream gzip = new GZipStream(stream, CompressionMode.Decompress))
+                    {
+                        using (BinaryReader reader = new BinaryReader(gzip))
+                        {
+                            // Verify this produced a version 9 binlog
+                            reader.ReadInt32().ShouldBe(9);
+                        }
+                    }
+                }
+                IReadOnlyList<string> sourceFiles = analyzer.Manager.Analyze(binLogPath).First().SourceFiles;
+
+                // Then
+                sourceFiles.ShouldNotBeNull(log.ToString());
+                new[]
+                {
+#if Is_Windows
+                // Linux and Mac builds appear to omit the AssemblyAttributes.cs file
+                "AssemblyAttributes",
+#endif
+                "Class1",
+                "AssemblyInfo"
+                }.ShouldBeSubsetOf(sourceFiles.Select(x => Path.GetFileName(x).Split('.').TakeLast(2).First()), log.ToString());
+            }
+            finally
+            {
+                if (File.Exists(binLogPath))
+                {
+                    File.Delete(binLogPath);
+                }
+            }
+        }
+
+        private static IProjectAnalyzer GetProjectAnalyzer(string projectFile, StringWriter log)
+        {
+            IProjectAnalyzer analyzer = new AnalyzerManager(
                 new AnalyzerManagerOptions
                 {
                     LogWriter = log
@@ -456,7 +564,7 @@ namespace Buildalyzer.Tests.Integration
 #pragma warning disable 0162
             if (BinaryLog)
             {
-                analyzer.AddBinaryLogger(Path.Combine(@"E:\Temp\", Path.ChangeExtension(Path.GetFileName(projectFile), ".core.binlog")));
+                analyzer.AddBinaryLogger(Path.Combine(@"C:\Temp\", Path.ChangeExtension(Path.GetFileName(projectFile), ".core.binlog")));
             }
 #pragma warning restore 0162
 

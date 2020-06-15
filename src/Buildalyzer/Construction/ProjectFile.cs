@@ -11,7 +11,7 @@ namespace Buildalyzer.Construction
     /// Encapsulates an MSBuild project file and provides some information about it's format.
     /// This class only parses the existing XML and does not perform any evaluation.
     /// </summary>
-    public class ProjectFile
+    public class ProjectFile : IProjectFile
     {
         /// <summary>
         /// These imports are known to require a .NET Framework host and build tools.
@@ -24,16 +24,14 @@ namespace Buildalyzer.Construction
 
         private readonly XDocument _document;
         private readonly XElement _projectElement;
-        private readonly IProjectTransformer _transformer;
 
         private string[] _targetFrameworks = null;
 
         // The project file path should already be normalized
-        internal ProjectFile(string path, IProjectTransformer transformer)
+        internal ProjectFile(string path)
         {
             Path = path;
             _document = XDocument.Load(path);
-            _transformer = transformer;
 
             // Get the project element
             _projectElement = _document.GetDescendants(ProjectFileNames.Project).FirstOrDefault();
@@ -104,16 +102,14 @@ namespace Buildalyzer.Construction
         public bool ContainsPackageReferences => _projectElement.GetDescendants(ProjectFileNames.PackageReference).Any();
 
         /// <summary>
+        /// The list of <c>PackageReference</c> items in the project file.
+        /// </summary>
+        public IReadOnlyList<IPackageReference> PackageReferences => _projectElement.GetDescendants(ProjectFileNames.PackageReference).Select(s => new PackageReference(s)).ToList();
+
+        /// <summary>
         /// Gets the <c>ToolsVersion</c> attribute of the <c>Project</c> element (or <c>null</c> if there isn't one).
         /// </summary>
         public string ToolsVersion => _projectElement.GetAttributeValue(ProjectFileNames.ToolsVersion);
-
-        internal XmlReader CreateReader()
-        {
-            XDocument document = new XDocument(_document);
-            _transformer?.Transform(document);
-            return document.CreateReader();
-        }
 
         internal static string[] GetTargetFrameworks(
             IEnumerable<string> targetFrameworksValues,
