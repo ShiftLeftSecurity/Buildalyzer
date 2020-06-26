@@ -233,9 +233,10 @@ namespace Buildalyzer.Tests.Integration
             IProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj", log);
 
             // When
-            IReadOnlyList<string> sourceFiles = analyzer.Build("net462").First().SourceFiles;
+            IAnalyzerResults results = analyzer.Build("net462");
 
             // Then
+            IReadOnlyList<string> sourceFiles = results.First(x => x.TargetFramework == "net462").SourceFiles;
             sourceFiles.ShouldNotBeNull(log.ToString());
             new[]
             {
@@ -257,9 +258,10 @@ namespace Buildalyzer.Tests.Integration
             IProjectAnalyzer analyzer = GetProjectAnalyzer(@"SdkMultiTargetingProject\SdkMultiTargetingProject.csproj", log);
 
             // When
-            IReadOnlyList<string> sourceFiles = analyzer.Build("netstandard2.0").First().SourceFiles;
+            IAnalyzerResults results = analyzer.Build("netstandard2.0");
 
             // Then
+            IReadOnlyList<string> sourceFiles = results.First(x => x.TargetFramework == "netstandard2.0").SourceFiles;
             sourceFiles.ShouldNotBeNull(log.ToString());
             new[]
             {
@@ -500,6 +502,29 @@ namespace Buildalyzer.Tests.Integration
             results.Count.ShouldBeGreaterThan(0, log.ToString());
             results.OverallSuccess.ShouldBeTrue(log.ToString());
             results.ShouldAllBe(x => x.Succeeded, log.ToString());
+        }
+
+        [Test]
+        public void BuildsLotsOfProjects()
+        {
+            // Given
+            StringWriter log = new StringWriter();
+            AnalyzerManager manager = new AnalyzerManager(
+                GetProjectPath(@"LotsOfProjects\LotsOfProjects.sln"),
+                new AnalyzerManagerOptions
+                {
+                    LogWriter = log
+                });
+            List<IProjectAnalyzer> projects = manager.Projects.Values.ToList();
+
+            // When
+            List<IAnalyzerResults> analyzerResults = projects
+                .AsParallel()
+                .Select(x => x.Build())
+                .ToList();
+
+            // Then
+            analyzerResults.Count.ShouldBe(50);
         }
 
         [Test]
