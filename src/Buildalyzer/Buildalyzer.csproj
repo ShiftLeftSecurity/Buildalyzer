@@ -35,7 +35,6 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="2.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="2.1.1" />
     <PackageReference Include="MSBuild.StructuredLogger" Version="2.1.133" />
-    <PackageReference Include="MsBuildPipeLogger.Server" Version="1.1.3" />
     <PackageReference Include="System.Reflection.TypeExtensions" Version="4.6.0" />
   </ItemGroup>
   <ItemGroup>
@@ -48,5 +47,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Buildalyzer.Logger\Buildalyzer.Logger.csproj" />
+    <ProjectReference Include="..\..\..\MsBuildPipeLogger\src\MsBuildPipeLogger.Server\MsBuildPipeLogger.Server.csproj" />
   </ItemGroup>
 </Project>
