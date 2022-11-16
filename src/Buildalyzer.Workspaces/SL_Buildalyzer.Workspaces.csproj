@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net6.0</TargetFrameworks>
+    <Description>Fork of: https://github.com/daveaglick/Buildalyzer</Description>
+    <PackageId>SL_Buildalyzer.Workspaces</PackageId>
+    <PackageVersion>1.0.3</PackageVersion>
+    <AssemblyName>Buildalyzer.Workspaces</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.1.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" Version="4.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Buildalyzer\SL_Buildalyzer.csproj" />
+  </ItemGroup>
+</Project>
