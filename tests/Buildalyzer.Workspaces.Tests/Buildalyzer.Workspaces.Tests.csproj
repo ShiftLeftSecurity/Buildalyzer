@@ -8,7 +8,6 @@
     <PackageReference Include="NUnit" Version="3.13.2" />
     <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
     <PackageReference Include="Shouldly" Version="3.0.2" />
-    <PackageReference Include="MsBuildPipeLogger.Logger" Version="1.1.6" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.6.1" />
     <ProjectReference Include="..\..\src\Buildalyzer.Workspaces\Buildalyzer.Workspaces.csproj" />
   </ItemGroup>
@@ -16,5 +15,9 @@
   <PropertyGroup Condition=" $([MSBuild]::IsOsPlatform('Windows')) ">
     <DefineConstants>Is_Windows</DefineConstants>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\MsBuildPipeLogger\src\MsBuildPipeLogger.Logger\MsBuildPipeLogger.Logger.csproj" />
+  </ItemGroup>
 
 </Project>
