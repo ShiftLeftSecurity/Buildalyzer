@@ -183,7 +183,7 @@ namespace Buildalyzer.Logging
             OverallSuccess = e.Succeeded;
         }
 
-        private void ErrorRaised(object sender, BuildErrorEventArgs e) => _logger.Error(e.Message);
+        private void ErrorRaised(object sender, BuildErrorEventArgs e) => _logger.Warn(e.Message);
 
         public void Dispose()
         {

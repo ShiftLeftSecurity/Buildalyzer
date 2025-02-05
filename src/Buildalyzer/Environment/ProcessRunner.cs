@@ -68,7 +68,7 @@ namespace Buildalyzer.Environment
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     Error.Add(e.Data);
-                    _logger?.Error(e.Data + System.Environment.NewLine);
+                    _logger?.Warn(e.Data + System.Environment.NewLine);
                 }
             };
         }
