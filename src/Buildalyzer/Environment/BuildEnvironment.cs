@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using NLog;
 
 namespace Buildalyzer.Environment
 {
@@ -11,6 +12,8 @@ namespace Buildalyzer.Environment
     /// </summary>
     public sealed class BuildEnvironment
     {
+        private static NLog.Logger _logger = LogManager.GetCurrentClassLogger();
+
         // https://docs.microsoft.com/en-us/dotnet/api/system.runtime.interopservices.runtimeinformation.frameworkdescription
         // .NET "Core" will return ".NET Core" up to 3.x and ".NET" for > 5
         public static bool IsRunningOnCore =>
@@ -61,6 +64,24 @@ namespace Buildalyzer.Environment
         public IReadOnlyDictionary<string, string> GlobalProperties => _globalProperties;
 
         public IReadOnlyDictionary<string, string> EnvironmentVariables => _environmentVariables;
+
+        public void Log(string logKey)
+        {
+            _logger.Debug($"BuildFacade.BuildEnvironment ({logKey}):");
+            _logger.Debug($"\t- ({logKey}) Targets: {TargetsToBuild}");
+            _logger.Debug($"\t- ({logKey}) MsBuildExePath: {MsBuildExePath}");
+            _logger.Debug($"\t- ({logKey}) DotnetExePath: {DotnetExePath}");
+            _logger.Debug($"\t- ({logKey}) WorkingDirectory: {WorkingDirectory}");
+            _logger.Debug($"\t- ({logKey}) DesignTime: {DesignTime}");
+            _logger.Debug($"\t- ({logKey}) Restore: {Restore}");
+            _logger.Debug($"\t- ({logKey}) NoAutoResponse: {NoAutoResponse}");
+            _logger.Debug($"\t- ({logKey}) Arguments: {Arguments.ToList()}");
+            _logger.Debug($"\t- ({logKey}) GlobalProperties:");
+            foreach (KeyValuePair<string, string> propPair in GlobalProperties)
+            {
+                _logger.Debug($"\t\t- ({logKey}) {propPair.Key} <- {propPair.Value}");
+            }
+        }
 
         public BuildEnvironment(
             bool designTime,

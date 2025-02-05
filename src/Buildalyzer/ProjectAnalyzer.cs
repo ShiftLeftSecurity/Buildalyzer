@@ -12,12 +12,15 @@ using Microsoft.Build.Construction;
 using Microsoft.Build.Logging;
 using Microsoft.Extensions.Logging;
 using MsBuildPipeLogger;
+using NLog;
 using ILogger = Microsoft.Build.Framework.ILogger;
 
 namespace Buildalyzer
 {
     public class ProjectAnalyzer : IProjectAnalyzer
     {
+        private static NLog.Logger _logger = LogManager.GetCurrentClassLogger();
+
         private readonly List<ILogger> _buildLoggers = new List<ILogger>();
 
         // Project-specific global properties and environment variables
@@ -156,10 +159,17 @@ namespace Buildalyzer
         private IAnalyzerResults BuildTargets(
             BuildEnvironment buildEnvironment, string targetFramework, string[] targetsToBuild, AnalyzerResults results)
         {
+            string logKey = ProjectFile.Path;
+            _logger.Debug($"BuildFacade: {logKey}, IsMultiTargeted: {ProjectFile.IsMultiTargeted}, {targetFramework}, targets: {targetsToBuild}");
+            buildEnvironment.Log(logKey);
+
+            _logger.Debug($"BuildFacade ({logKey}): Building cancellation token");
             using (CancellationTokenSource cancellation = new CancellationTokenSource())
             {
+                _logger.Debug($"BuildFacade ({logKey}): Building pipe logger");
                 using (AnonymousPipeLoggerServer pipeLogger = new AnonymousPipeLoggerServer(cancellation.Token))
                 {
+                    _logger.Debug($"BuildFacade ({logKey}): Building event logger");
                     using (EventProcessor eventProcessor =
                         new EventProcessor(Manager, this, BuildLoggers, pipeLogger, results != null))
                     {
@@ -171,6 +181,8 @@ namespace Buildalyzer
                             targetsToBuild,
                             pipeLogger.GetClientHandle(),
                             out string arguments);
+                        _logger.Debug($"BuildFacade ({logKey}): GetCommand was: {fileName}");
+                        _logger.Debug($"BuildFacade ({logKey}): Building process runner");
                         using (ProcessRunner processRunner = new ProcessRunner(
                             fileName,
                             arguments,
@@ -178,17 +190,25 @@ namespace Buildalyzer
                             GetEffectiveEnvironmentVariables(buildEnvironment),
                             Manager.LoggerFactory))
                         {
+                            _logger.Debug($"BuildFacade ({logKey}): Starting process runner");
                             processRunner.Start();
+                            _logger.Debug($"BuildFacade ({logKey}): Reading all msbuild output");
                             pipeLogger.ReadAll();
+                            _logger.Debug($"BuildFacade ({logKey}): Waiting for process runner to exit");
                             processRunner.WaitForExit();
+                            _logger.Debug($"BuildFacade ({logKey}): Process runner exited");
                             exitCode = processRunner.ExitCode;
+                            _logger.Debug($"BuildFacade ({logKey}): Exit code was: {exitCode}");
                         }
 
                         // Collect the results
+                        _logger.Debug($"BuildFacade ({logKey}): Collecting results");
                         results?.Add(eventProcessor.Results, exitCode == 0 && eventProcessor.OverallSuccess);
                     }
                 }
             }
+            _logger.Debug($"BuildFacade ({logKey}): Finished analyzing project");
+
             return results;
         }
 
