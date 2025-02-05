@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Build.Framework;
 using Microsoft.Extensions.Logging;
+using NLog;
 
 namespace Buildalyzer.Logging
 {
@@ -16,7 +17,7 @@ namespace Buildalyzer.Logging
         private readonly Dictionary<int, PropertiesAndItems> _evalulationResults = new Dictionary<int, PropertiesAndItems>();
         private readonly AnalyzerManager _manager;
         private readonly ProjectAnalyzer _analyzer;
-        private readonly ILogger<EventProcessor> _logger;
+        private readonly NLog.Logger _logger = LogManager.GetCurrentClassLogger();
         private readonly IEnumerable<Microsoft.Build.Framework.ILogger> _buildLoggers;
         private readonly IEventSource _eventSource;
         private readonly bool _analyze;
@@ -31,7 +32,6 @@ namespace Buildalyzer.Logging
         {
             _manager = manager;
             _analyzer = analyzer;
-            _logger = manager.LoggerFactory?.CreateLogger<EventProcessor>();
             _buildLoggers = buildLoggers ?? Array.Empty<Microsoft.Build.Framework.ILogger>();
             _eventSource = eventSource;
             _analyze = analyze;
@@ -183,7 +183,7 @@ namespace Buildalyzer.Logging
             OverallSuccess = e.Succeeded;
         }
 
-        private void ErrorRaised(object sender, BuildErrorEventArgs e) => _logger.LogError(e.Message);
+        private void ErrorRaised(object sender, BuildErrorEventArgs e) => _logger.Error(e.Message);
 
         public void Dispose()
         {
