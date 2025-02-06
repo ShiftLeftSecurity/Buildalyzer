@@ -1,6 +1,7 @@
 extern alias StructuredLogger;
 using Microsoft.Build.Framework;
 using Microsoft.Extensions.Logging;
+using NLog;
 
 namespace Buildalyzer.Logging;
 
@@ -12,7 +13,7 @@ internal class EventProcessor : IDisposable
     private readonly Dictionary<int, PropertiesAndItems> _evalulationResults = [];
     private readonly AnalyzerManager _manager;
     private readonly ProjectAnalyzer _analyzer;
-    private readonly ILogger<EventProcessor> _logger;
+    private readonly NLog.Logger _logger = LogManager.GetCurrentClassLogger();
     private readonly IEnumerable<Microsoft.Build.Framework.ILogger> _buildLoggers;
     private readonly IEventSource _eventSource;
     private readonly bool _analyze;
@@ -27,8 +28,7 @@ internal class EventProcessor : IDisposable
     {
         _manager = manager;
         _analyzer = analyzer;
-        _logger = manager.LoggerFactory?.CreateLogger<EventProcessor>();
-        _buildLoggers = buildLoggers ?? [];
+        _buildLoggers = buildLoggers ?? Array.Empty<Microsoft.Build.Framework.ILogger>();
         _eventSource = eventSource;
         _analyze = analyze;
 
@@ -50,10 +50,7 @@ internal class EventProcessor : IDisposable
             eventSource.TargetFinished += TargetFinished;
             eventSource.MessageRaised += MessageRaised;
             eventSource.BuildFinished += BuildFinished;
-            if (_logger != null)
-            {
-                eventSource.ErrorRaised += ErrorRaised;
-            }
+            eventSource.ErrorRaised += ErrorRaised;
         }
     }
 
@@ -179,10 +176,11 @@ internal class EventProcessor : IDisposable
         OverallSuccess = e.Succeeded;
     }
 
-    private void ErrorRaised(object sender, BuildErrorEventArgs e) => _logger.LogError(e.Message);
+    private void ErrorRaised(object sender, BuildErrorEventArgs e) => _logger.Warn(e.Message);
 
     public void Dispose()
     {
+        _logger.Trace("EventProcessor: Disposing");
         if (_analyze)
         {
             _eventSource.ProjectStarted -= ProjectStarted;
@@ -191,10 +189,7 @@ internal class EventProcessor : IDisposable
             _eventSource.TargetFinished -= TargetFinished;
             _eventSource.MessageRaised -= MessageRaised;
             _eventSource.BuildFinished -= BuildFinished;
-            if (_logger != null)
-            {
-                _eventSource.ErrorRaised -= ErrorRaised;
-            }
+            _eventSource.ErrorRaised -= ErrorRaised;
         }
 
         // Need to release the loggers in case they get used again (I.e., Restore followed by Clean;Build)
@@ -202,5 +197,6 @@ internal class EventProcessor : IDisposable
         {
             buildLogger.Shutdown();
         }
+        _logger.Trace("EventProcessor: Finished disposing");
     }
 }
