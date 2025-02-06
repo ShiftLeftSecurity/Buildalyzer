@@ -165,13 +165,14 @@ namespace Buildalyzer
         public class BuildEventDispatcher : EventArgsDispatcher, IDisposable
         {
             // Current buildalyzer version only supports file format version 7 of msbinlog
+            private readonly FileStream _fileStream;
+            private readonly BinaryReader _binaryReader;
             private readonly BuildEventArgsReader _buildEventArgsReader;
 
-            private readonly BinaryReader _binaryReader;
-
-            public BuildEventDispatcher(AnonymousPipeServerStream pipeServerStream)
+            public BuildEventDispatcher(string binLogPath)
             {
-                _binaryReader = new (pipeServerStream);
+                _fileStream = File.Open(binLogPath, FileMode.Open, FileAccess.Read);
+                _binaryReader = new (_fileStream);
                 _buildEventArgsReader = new (_binaryReader, fileFormatVersion: 7);
             }
 
@@ -189,6 +190,7 @@ namespace Buildalyzer
 
             public void Dispose()
             {
+                _fileStream.Dispose();
                 _buildEventArgsReader.Dispose();
                 _binaryReader.Dispose();
             }
@@ -206,15 +208,20 @@ namespace Buildalyzer
             using (CancellationTokenSource cancellation = new CancellationTokenSource())
             {
                 _logger.Debug($"BuildFacade ({logKey}): Building pipe logger");
-                using AnonymousPipeServerStream pipe = new (PipeDirection.In, HandleInheritability.Inheritable, 8192);
+
+                // using AnonymousPipeServerStream pipe = new (PipeDirection.In, HandleInheritability.Inheritable, 8192);
 
                 // Run MSBuild
+                string binLogPath = Path.GetTempFileName();
+                binLogPath = Path.ChangeExtension(binLogPath, ".log");
+                _logger.Debug($"BuildFacade ({logKey}): Binary logs to {binLogPath}");
                 int exitCode;
                 string fileName = GetCommand(
                     buildEnvironment,
                     targetFramework,
                     targetsToBuild,
-                    pipe.GetClientHandleAsString(),
+                    string.Empty,
+                    binLogPath,
                     out string arguments);
                 _logger.Debug($"BuildFacade ({logKey}): GetCommand was: {fileName}");
                 _logger.Debug($"BuildFacade ({logKey}): Arguments of GetCommand are: {arguments}");
@@ -229,10 +236,14 @@ namespace Buildalyzer
 
                 _logger.Debug($"BuildFacade ({logKey}): Starting process runner");
                 processRunner.Start(); // Starts child compiler process
-                pipe.DisposeLocalCopyOfClientHandle(); // Close write end of pipe we only intend to read from
+
+                _logger.Debug($"BuildFacade ({logKey}): Waiting for process runner to exit");
+                processRunner.WaitForExit();
+
+                // pipe.DisposeLocalCopyOfClientHandle(); // Close write end of pipe we only intend to read from
 
                 _logger.Debug($"BuildFacade ({logKey}): Building msbuild output reader and dispatcher");
-                using BuildEventDispatcher buildEventDispatcher = new (pipe);
+                using BuildEventDispatcher buildEventDispatcher = new (binLogPath);
 
                 _logger.Debug($"BuildFacade ({logKey}): Building event processor");
                 using EventProcessor eventProcessor =
@@ -240,9 +251,6 @@ namespace Buildalyzer
 
                 _logger.Debug($"BuildFacade ({logKey}): Reading all msbuild output");
                 buildEventDispatcher.ReadCompilerOutputAndDispatch();
-
-                _logger.Debug($"BuildFacade ({logKey}): Waiting for process runner to exit");
-                processRunner.WaitForExit();
 
                 _logger.Debug($"BuildFacade ({logKey}): Process runner exited");
                 exitCode = processRunner.ExitCode;
@@ -266,6 +274,7 @@ namespace Buildalyzer
             string targetFramework,
             string[] targetsToBuild,
             string pipeLoggerClientHandle,
+            string binLogTmpPath,
             out string arguments)
         {
             // Get the executable and the initial set of arguments
@@ -335,13 +344,16 @@ namespace Buildalyzer
             // Get the logger arguments (/l)
             string loggerPath = typeof(BuildalyzerLogger).Assembly.Location;
             bool logEverything = _buildLoggers.Count > 0;
-            string loggerArgStart = "/l"; // in case of MSBuild.exe use slash as parameter prefix for logger
-            if (isDotNet)
-            {
-                // in case of dotnet.exe use dash as parameter prefix for logger
-                loggerArgStart = "-l";
-            }
-            argumentsList.Add(loggerArgStart + $":{nameof(BuildalyzerLogger)},{FormatArgument(loggerPath)};{pipeLoggerClientHandle};{logEverything}");
+
+            // string loggerArgStart = "/l"; // in case of MSBuild.exe use slash as parameter prefix for logger
+            // if (isDotNet)
+            // {
+            //     // in case of dotnet.exe use dash as parameter prefix for logger
+            //     loggerArgStart = "-l";
+            // }
+            // argumentsList.Add(loggerArgStart + $":{nameof(BuildalyzerLogger)},{FormatArgument(loggerPath)};{pipeLoggerClientHandle};{logEverything}");
+
+            argumentsList.Add($"-flp:logfile={binLogTmpPath};verbosity=diagnostic");
 
             // Get the noAutoResponse argument (/noAutoResponse)
             // See https://github.com/daveaglick/Buildalyzer/issues/211
