@@ -6,6 +6,7 @@ using System.Linq;
 using Microsoft.Build.Framework;
 using Microsoft.Extensions.Logging;
 using NLog;
+using NLog.Fluent;
 
 namespace Buildalyzer.Logging
 {
@@ -206,6 +207,8 @@ namespace Buildalyzer.Logging
             {
                 buildLogger.Shutdown();
             }
+
+            _logger.Debug("EventProcessor: done disposing");
         }
     }
 }

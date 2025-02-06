@@ -76,6 +76,7 @@ namespace Buildalyzer.Environment
         public ProcessRunner Start()
         {
             Process.Start();
+
             Process.BeginOutputReadLine();
             Process.BeginErrorReadLine();
             _logger?.Debug($"{System.Environment.NewLine}Started process {Process.Id}: \"{Process.StartInfo.FileName}\" {Process.StartInfo.Arguments}{System.Environment.NewLine}");

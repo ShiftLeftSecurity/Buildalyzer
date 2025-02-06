@@ -3,11 +3,14 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using NLog;
 
 namespace Buildalyzer
 {
     public class AnalyzerResults : IAnalyzerResults
     {
+        private static NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
+
         private readonly ConcurrentDictionary<string, IAnalyzerResult> _results = new ConcurrentDictionary<string, IAnalyzerResult>();
 
         private bool? _overallSuccess = null;
@@ -18,9 +21,11 @@ namespace Buildalyzer
         {
             foreach (IAnalyzerResult result in results)
             {
+                _logger.Debug($"Adding result {result.ProjectFilePath}");
                 _results[result.TargetFramework ?? string.Empty] = result;
             }
             _overallSuccess = _overallSuccess.HasValue ? _overallSuccess.Value && overallSuccess : overallSuccess;
+            _logger.Debug($"Overall success: {_overallSuccess}");
         }
 
         public IAnalyzerResult this[string targetFramework] => _results[targetFramework];

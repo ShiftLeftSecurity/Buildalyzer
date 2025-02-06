@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
 using System.Threading;
 using Buildalyzer.Construction;
@@ -9,6 +10,7 @@ using Buildalyzer.Environment;
 using Buildalyzer.Logger;
 using Buildalyzer.Logging;
 using Microsoft.Build.Construction;
+using Microsoft.Build.Framework;
 using Microsoft.Build.Logging;
 using Microsoft.Extensions.Logging;
 using MsBuildPipeLogger;
@@ -155,6 +157,43 @@ namespace Buildalyzer
         /// <inheritdoc/>
         public IAnalyzerResults Build(BuildEnvironment buildEnvironment) => Build((string)null, buildEnvironment);
 
+        /// <summary>
+        /// Reads from a pipe, dispatches (via EventArgsDispatcher.Dispatch) to callbacks saved in property
+        /// fields. The way buildalyzer is, these callbacks are added to these properties by passing this
+        /// object instance to EventProcessor constructor as IEventSource (base class of EventArgsDispatcher).
+        /// </summary>
+        public class BuildEventDispatcher : EventArgsDispatcher, IDisposable
+        {
+            // Current buildalyzer version only supports file format version 7 of msbinlog
+            private readonly BuildEventArgsReader _buildEventArgsReader;
+
+            private readonly BinaryReader _binaryReader;
+
+            public BuildEventDispatcher(AnonymousPipeServerStream pipeServerStream)
+            {
+                _binaryReader = new (pipeServerStream);
+                _buildEventArgsReader = new (_binaryReader, fileFormatVersion: 7);
+            }
+
+            public void ReadCompilerOutputAndDispatch()
+            {
+                _logger.Debug("BuildEventDispatcher: Reading compiler output");
+
+                while (_buildEventArgsReader.Read() is { } compilerEventRead)
+                {
+                    _logger.Debug($"BuildEventDispatcher: event is {compilerEventRead}, message is: {compilerEventRead.Message}");
+                    Dispatch(compilerEventRead);
+                }
+                _logger.Debug("BuildEventDispatcher: Finished reading compiler output");
+            }
+
+            public void Dispose()
+            {
+                _buildEventArgsReader.Dispose();
+                _binaryReader.Dispose();
+            }
+        }
+
         // This is where the magic happens - returns one result per result target framework
         private IAnalyzerResults BuildTargets(
             BuildEnvironment buildEnvironment, string targetFramework, string[] targetsToBuild, AnalyzerResults results)
@@ -167,46 +206,55 @@ namespace Buildalyzer
             using (CancellationTokenSource cancellation = new CancellationTokenSource())
             {
                 _logger.Debug($"BuildFacade ({logKey}): Building pipe logger");
-                using (AnonymousPipeLoggerServer pipeLogger = new AnonymousPipeLoggerServer(cancellation.Token))
-                {
-                    _logger.Debug($"BuildFacade ({logKey}): Building event logger");
-                    using (EventProcessor eventProcessor =
-                        new EventProcessor(Manager, this, BuildLoggers, pipeLogger, results != null))
-                    {
-                        // Run MSBuild
-                        int exitCode;
-                        string fileName = GetCommand(
-                            buildEnvironment,
-                            targetFramework,
-                            targetsToBuild,
-                            pipeLogger.GetClientHandle(),
-                            out string arguments);
-                        _logger.Debug($"BuildFacade ({logKey}): GetCommand was: {fileName}");
-                        _logger.Debug($"BuildFacade ({logKey}): Building process runner");
-                        using (ProcessRunner processRunner = new ProcessRunner(
-                            fileName,
-                            arguments,
-                            buildEnvironment.WorkingDirectory ?? Path.GetDirectoryName(ProjectFile.Path),
-                            GetEffectiveEnvironmentVariables(buildEnvironment),
-                            Manager.LoggerFactory))
-                        {
-                            _logger.Debug($"BuildFacade ({logKey}): Starting process runner");
-                            processRunner.Start();
-                            _logger.Debug($"BuildFacade ({logKey}): Reading all msbuild output");
-                            pipeLogger.ReadAll();
-                            _logger.Debug($"BuildFacade ({logKey}): Waiting for process runner to exit");
-                            processRunner.WaitForExit();
-                            _logger.Debug($"BuildFacade ({logKey}): Process runner exited");
-                            exitCode = processRunner.ExitCode;
-                            _logger.Debug($"BuildFacade ({logKey}): Exit code was: {exitCode}");
-                        }
+                using AnonymousPipeServerStream pipe = new (PipeDirection.In, HandleInheritability.Inheritable);
 
-                        // Collect the results
-                        _logger.Debug($"BuildFacade ({logKey}): Collecting results");
-                        results?.Add(eventProcessor.Results, exitCode == 0 && eventProcessor.OverallSuccess);
-                    }
-                }
+                // Run MSBuild
+                int exitCode;
+                string fileName = GetCommand(
+                    buildEnvironment,
+                    targetFramework,
+                    targetsToBuild,
+                    pipe.GetClientHandleAsString(),
+                    out string arguments);
+                _logger.Debug($"BuildFacade ({logKey}): GetCommand was: {fileName}");
+
+                _logger.Debug($"BuildFacade ({logKey}): Building process runner");
+                using ProcessRunner processRunner = new ProcessRunner(
+                    fileName,
+                    arguments,
+                    buildEnvironment.WorkingDirectory ?? Path.GetDirectoryName(ProjectFile.Path),
+                    GetEffectiveEnvironmentVariables(buildEnvironment),
+                    Manager.LoggerFactory);
+
+                _logger.Debug($"BuildFacade ({logKey}): Starting process runner");
+                processRunner.Start(); // Starts child compiler process
+                pipe.DisposeLocalCopyOfClientHandle(); // Close write end of pipe we only intend to read from
+
+                _logger.Debug($"BuildFacade ({logKey}): Building msbuild output reader and dispatcher");
+                BuildEventDispatcher buildEventDispatcher = new (pipe);
+
+                _logger.Debug($"BuildFacade ({logKey}): Building event processor");
+                using EventProcessor eventProcessor =
+                    new (Manager, this, BuildLoggers, buildEventDispatcher, results != null);
+
+                _logger.Debug($"BuildFacade ({logKey}): Reading all msbuild output");
+                buildEventDispatcher.ReadCompilerOutputAndDispatch();
+
+                _logger.Debug($"BuildFacade ({logKey}): Waiting for process runner to exit");
+                processRunner.WaitForExit();
+
+                _logger.Debug($"BuildFacade ({logKey}): Process runner exited");
+                exitCode = processRunner.ExitCode;
+                _logger.Debug($"BuildFacade ({logKey}): Exit code was: {exitCode}");
+
+                // Collect the results
+                _logger.Debug($"BuildFacade ({logKey}): Collecting results");
+                results?.Add(eventProcessor.Results, exitCode == 0 && eventProcessor.OverallSuccess);
+
+                _logger.Debug($"BuildFacade ({logKey}): Dispose EventProcessor");
+                _logger.Debug($"BuildFacade ({logKey}): Dispose AnonymousPipeLoggerServer");
             }
+            _logger.Debug($"BuildFacade ({logKey}): Dispose CancellationTokenSource");
             _logger.Debug($"BuildFacade ({logKey}): Finished analyzing project");
 
             return results;
