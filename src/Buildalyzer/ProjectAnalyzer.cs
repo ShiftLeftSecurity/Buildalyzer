@@ -212,16 +212,19 @@ namespace Buildalyzer
                 // using AnonymousPipeServerStream pipe = new (PipeDirection.In, HandleInheritability.Inheritable, 8192);
 
                 // Run MSBuild
-                string binLogPath = Path.GetTempFileName();
+                string binLogPath = "/home/m/tmp/blah.log";
                 binLogPath = Path.ChangeExtension(binLogPath, ".log");
                 _logger.Debug($"BuildFacade ({logKey}): Binary logs to {binLogPath}");
+                FileStream fs = new (binLogPath, FileMode.Create, FileAccess.ReadWrite);
+                IntPtr? fileHandle = fs.SafeFileHandle?.DangerousGetHandle();
+                _logger.Debug($"fileHandle is: {fileHandle}");
                 int exitCode;
                 string fileName = GetCommand(
                     buildEnvironment,
                     targetFramework,
                     targetsToBuild,
+                    fileHandle.ToString(),
                     string.Empty,
-                    binLogPath,
                     out string arguments);
                 _logger.Debug($"BuildFacade ({logKey}): GetCommand was: {fileName}");
                 _logger.Debug($"BuildFacade ({logKey}): Arguments of GetCommand are: {arguments}");
@@ -239,6 +242,8 @@ namespace Buildalyzer
 
                 _logger.Debug($"BuildFacade ({logKey}): Waiting for process runner to exit");
                 processRunner.WaitForExit();
+
+                fs.Dispose();
 
                 // pipe.DisposeLocalCopyOfClientHandle(); // Close write end of pipe we only intend to read from
 
@@ -345,15 +350,15 @@ namespace Buildalyzer
             string loggerPath = typeof(BuildalyzerLogger).Assembly.Location;
             bool logEverything = _buildLoggers.Count > 0;
 
-            // string loggerArgStart = "/l"; // in case of MSBuild.exe use slash as parameter prefix for logger
-            // if (isDotNet)
-            // {
-            //     // in case of dotnet.exe use dash as parameter prefix for logger
-            //     loggerArgStart = "-l";
-            // }
-            // argumentsList.Add(loggerArgStart + $":{nameof(BuildalyzerLogger)},{FormatArgument(loggerPath)};{pipeLoggerClientHandle};{logEverything}");
+            string loggerArgStart = "/l"; // in case of MSBuild.exe use slash as parameter prefix for logger
+            if (isDotNet)
+            {
+                // in case of dotnet.exe use dash as parameter prefix for logger
+                loggerArgStart = "-l";
+            }
+            argumentsList.Add(loggerArgStart + $":{nameof(BuildalyzerLogger)},{FormatArgument(loggerPath)};{pipeLoggerClientHandle};{logEverything}");
 
-            argumentsList.Add($"-flp:logfile={binLogTmpPath};verbosity=diagnostic");
+            // argumentsList.Add($"-flp:logfile={binLogTmpPath};verbosity=diagnostic");
 
             // Get the noAutoResponse argument (/noAutoResponse)
             // See https://github.com/daveaglick/Buildalyzer/issues/211
