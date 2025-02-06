@@ -11,11 +11,14 @@ using Microsoft.Build.Logging;
 using Microsoft.Extensions.Logging;
 using MsBuildPipeLogger;
 using ILogger = Microsoft.Build.Framework.ILogger;
+using NLog;
 
 namespace Buildalyzer;
 
 public class ProjectAnalyzer : IProjectAnalyzer
 {
+    private static NLog.Logger _logger = LogManager.GetCurrentClassLogger();
+
     private readonly List<ILogger> _buildLoggers = [];
 
     // Project-specific global properties and environment variables
@@ -150,7 +153,8 @@ public class ProjectAnalyzer : IProjectAnalyzer
     {
         using (CancellationTokenSource cancellation = new CancellationTokenSource())
         {
-            using var pipeLogger = new AnonymousPipeLoggerServer(cancellation.Token);
+            _logger.Trace($"BuildTargets ({ProjectFile.Name}): Building pipe");
+            var pipeLogger = new AnonymousPipeLoggerServer(cancellation.Token);
             bool receivedAnyEvent = false;
 
             void OnPipeLoggerOnAnyEventRaised(object o, BuildEventArgs buildEventArgs)
@@ -160,6 +164,7 @@ public class ProjectAnalyzer : IProjectAnalyzer
 
             pipeLogger.AnyEventRaised += OnPipeLoggerOnAnyEventRaised;
 
+            _logger.Trace($"BuildTargets ({ProjectFile.Name}): Building event processor");
             using var eventProcessor = new EventProcessor(Manager, this, BuildLoggers, pipeLogger, results != null);
 
             // Run MSBuild
@@ -180,29 +185,46 @@ public class ProjectAnalyzer : IProjectAnalyzer
             {
                 void OnProcessRunnerExited()
                 {
-                    if (!receivedAnyEvent && processRunner.ExitCode != 0)
-                    {
-                        pipeLogger.Dispose();
-                    }
+                    _logger.Debug("OnProcessRunnerExited dispose");
+                    pipeLogger.Dispose();
                 }
 
                 processRunner.Exited += OnProcessRunnerExited;
+                _logger.Trace($"BuildTargets ({ProjectFile.Name}): Starting msbuild subprocess");
                 processRunner.Start();
+                _logger.Trace($"BuildTargets ({ProjectFile.Name}): Started msbuild subprocess");
+
+                _logger.Trace($"BuildTargets ({ProjectFile.Name}): Closing write end of binlog read pipe");
+                pipeLogger.DisposeLocalCopyOfClientHandle();
+                _logger.Trace($"BuildTargets ({ProjectFile.Name}): Closed write end of binlog read pipe");
+
                 try
                 {
+                    _logger.Trace($"BuildTargets ({ProjectFile.Name}): Starting binlog pipe read");
                     pipeLogger.ReadAll();
+                    _logger.Trace($"BuildTargets ({ProjectFile.Name}): Normal finish of pipe read");
                 }
                 catch (ObjectDisposedException)
                 {
                     // Ignore
+                    _logger.Trace($"BuildTargets ({ProjectFile.Name}): Object disposed exception during pipe reading");
                 }
+                catch (Exception e)
+                {
+                    _logger.Warn($"BuildTargets ({ProjectFile.Name}): Exception during pipe reading: {e.Message}");
+                }
+
+                _logger.Trace($"BuildTargets ({ProjectFile.Name}): Wait for subprocess exit");
                 processRunner.WaitForExit();
                 exitCode = processRunner.ExitCode;
+                _logger.Trace($"BuildTargets ({ProjectFile.Name}): Subprocess exited with code {exitCode}");
             }
 
             // Collect the results
+            _logger.Trace($"BuildTargets ({ProjectFile.Name}): Collecting event arg processed results");
             results?.Add(eventProcessor.Results, exitCode == 0 && eventProcessor.OverallSuccess);
         }
+        _logger.Trace($"BuildTargets ({ProjectFile.Name}): Finished");
         return results;
     }
 
