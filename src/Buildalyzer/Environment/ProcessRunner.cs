@@ -52,7 +52,8 @@ namespace Buildalyzer.Environment
                 }
             }
 
-            Process.EnableRaisingEvents = true;  // Raises Process.Exited immediately instead of when checked via .WaitForExit() or .HasExited
+            Process.EnableRaisingEvents =
+                true; // Raises Process.Exited immediately instead of when checked via .WaitForExit() or .HasExited
             Process.Exited += ProcessExited;
 
             Process.OutputDataReceived += (_, e) =>
@@ -79,17 +80,22 @@ namespace Buildalyzer.Environment
 
             Process.BeginOutputReadLine();
             Process.BeginErrorReadLine();
-            _logger?.Debug($"{System.Environment.NewLine}Started process {Process.Id}: \"{Process.StartInfo.FileName}\" {Process.StartInfo.Arguments}{System.Environment.NewLine}");
+            _logger?.Debug(
+                $"{System.Environment.NewLine}Started process {Process.Id}: \"{Process.StartInfo.FileName}\" {Process.StartInfo.Arguments}{System.Environment.NewLine}");
             return this;
         }
 
         private void ProcessExited(object sender, EventArgs e)
         {
             Exited?.Invoke();
-            _logger?.Debug($"Process {Process.Id} exited with code {Process.ExitCode}{System.Environment.NewLine}{System.Environment.NewLine}");
+            _logger?.Debug(
+                $"Process {Process.Id} exited with code {Process.ExitCode}{System.Environment.NewLine}{System.Environment.NewLine}");
         }
 
-        public void WaitForExit() => Process.WaitForExit();
+        public void WaitForExit()
+        {
+            Process.WaitForExit();
+        }
 
         public bool WaitForExit(int timeout)
         {

@@ -206,7 +206,7 @@ namespace Buildalyzer
             using (CancellationTokenSource cancellation = new CancellationTokenSource())
             {
                 _logger.Debug($"BuildFacade ({logKey}): Building pipe logger");
-                using AnonymousPipeServerStream pipe = new (PipeDirection.In, HandleInheritability.Inheritable);
+                using AnonymousPipeServerStream pipe = new (PipeDirection.In, HandleInheritability.Inheritable, 8192);
 
                 // Run MSBuild
                 int exitCode;
@@ -217,6 +217,7 @@ namespace Buildalyzer
                     pipe.GetClientHandleAsString(),
                     out string arguments);
                 _logger.Debug($"BuildFacade ({logKey}): GetCommand was: {fileName}");
+                _logger.Debug($"BuildFacade ({logKey}): Arguments of GetCommand are: {arguments}");
 
                 _logger.Debug($"BuildFacade ({logKey}): Building process runner");
                 using ProcessRunner processRunner = new ProcessRunner(
@@ -231,7 +232,7 @@ namespace Buildalyzer
                 pipe.DisposeLocalCopyOfClientHandle(); // Close write end of pipe we only intend to read from
 
                 _logger.Debug($"BuildFacade ({logKey}): Building msbuild output reader and dispatcher");
-                BuildEventDispatcher buildEventDispatcher = new (pipe);
+                using BuildEventDispatcher buildEventDispatcher = new (pipe);
 
                 _logger.Debug($"BuildFacade ({logKey}): Building event processor");
                 using EventProcessor eventProcessor =
