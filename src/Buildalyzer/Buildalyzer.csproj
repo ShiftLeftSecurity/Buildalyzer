@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Description>A little utility to perform design-time builds of .NET projects without having to think too hard about it. Should work with any project type on any .NET runtime.</Description>
   </PropertyGroup>
   <ItemGroup>
