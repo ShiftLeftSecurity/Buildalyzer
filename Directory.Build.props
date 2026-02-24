@@ -1,5 +1,9 @@
 <Project>
 
+  <!-- Since this project is being vendored, load the parent's properties.
+       Namely, $(RoslynVersion) and $(MsBuildPackageVersion), so they are always in sync. -->
+  <Import Project="../Directory.Build.props" />
+
   <PropertyGroup>
     <RepositoryUrl>https://github.com/phmonte/Buildalyzer.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

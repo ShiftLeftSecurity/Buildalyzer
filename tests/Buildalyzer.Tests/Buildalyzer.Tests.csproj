@@ -9,8 +9,8 @@
 
   <ItemGroup Label="Test versions">
     <PackageReference Include="FSharp.Compiler.Service" Version="*" />
-    <PackageReference Update="Microsoft.CodeAnalysis.CSharp" Version="4.*" />
-    <PackageReference Update="Microsoft.CodeAnalysis.VisualBasic" Version="4.*" />
+    <PackageReference Update="Microsoft.CodeAnalysis.CSharp" Version="$(RoslynVersion)" />
+    <PackageReference Update="Microsoft.CodeAnalysis.VisualBasic" Version="$(RoslynVersion)" />
   </ItemGroup>
 
   <ItemGroup>
